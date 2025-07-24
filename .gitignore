@@ -1,0 +1,6 @@
+*.env.dev
+
+
+
+node_modules
+.venv

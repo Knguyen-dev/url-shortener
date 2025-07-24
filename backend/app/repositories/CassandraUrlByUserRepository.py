@@ -1,0 +1,2 @@
+class CassandraUrlByUserRepository:
+  pass
