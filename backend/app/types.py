@@ -29,8 +29,11 @@ class LoginRequest(BaseModel):
 # Url router models
 # # ---------------------------------
 class CreateUrlRequest(BaseModel):
+  # TODO: Should probably have server side input validation here
   original_url: str = Field(min_length=1)
   password: str
+  confirm_password: str
   is_active: bool
+  title: str
   
 

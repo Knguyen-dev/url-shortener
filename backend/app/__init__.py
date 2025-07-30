@@ -1,7 +1,7 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI 
-from .services.postgres import init_postgres
-from .services.cassandra import init_cassandra
+from .services.postgres import init_postgres, cleanup_postgres
+from .services.cassandra import init_cassandra, shutdown_cassandra
 from .services.redis import init_redis
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import FastAPI
@@ -13,11 +13,17 @@ Here you can find information on the available endpoints and how to use them.
 
 @asynccontextmanager
 async def startup_event(app: FastAPI):
-  # Connect to PostgreSQL, Cassandra, and Redis
-  await init_postgres()
-  init_cassandra()
+
+  # Start up
   await init_redis()
-  yield
+  await init_postgres()
+  await init_cassandra()
+  
+  yield 
+
+  # # Shutdown
+  await cleanup_postgres() 
+  shutdown_cassandra()
 
 app = FastAPI(
   lifespan=startup_event,

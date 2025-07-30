@@ -1,35 +1,48 @@
-version: "3.8"
 services:
   web:
     build:
       context: .
       dockerfile: Dockerfile
     env_file:
-      - .env-dev
+      - .env.dev
     ports:
       # FastAPI is running on port 8000 in the container. Make it accessible 
       # on port 8000 of the local machine
       - "8000:8000"
+
+    depends_on:
+      # Almost a minute on clean start, about 20 seconds with a volume. Cleaner to just wait for Cassandra to 
+      # be ready for connection before starting the web-app container
+      cassandra:
+        condition: service_healthy
     
-  # NOTE: Make sure the .env-dev matches all the connection
+  # NOTE: Make sure the .env.dev matches all the connection
   # details that we listed here.
   postgres:
     image: postgres:15
     env_file:
-      - .env-dev
-    ports:
-      - "5432:5432"
+      - .env.dev
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
 
   cassandra:
     image: cassandra:4.1
-    ports:
-      - "9042:9042" # Default Cassandra port
     env_file:
-      - .env-dev
+      - .env.dev
+    volumes:
+      - cassandra_data:/var/lib/cassandra 
+    healthcheck:
+      test: ["CMD", "cqlsh", "-u", "cassandra", "-p", "cassandra", "-e", "DESCRIBE KEYSPACES"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
 
   redis:
     image: redis:7.2
-    ports:
-      - "6379:6379"
     env_file:
-      - .env-dev
+      - .env.dev
+
+volumes:
+  cassandra_data:
+  postgres_data:

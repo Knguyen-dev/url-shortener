@@ -1,22 +1,40 @@
 import redis.asyncio as redis
 from app.config import settings
 from .logger import app_logger
+import asyncio
 
-redis_client: redis.Redis = redis.Redis(
-    host=settings.REDIS_HOST,
-    port=settings.REDIS_PORT,
-    db=settings.REDIS_DB,
-    password=settings.REDIS_PASSWORD,
-    decode_responses=True,  # optional: returns str instead of bytes, probably recommended
-  )
+redis_client: redis.Redis = redis.from_url(settings.REDIS_URL)
 
 async def init_redis():
-  try:
-    await redis_client.ping()
-    app_logger.info("Redis Connection Successful")
-  except redis.ConnectionError as e:
-    app_logger.info(f"Redis Connection Failed: {str(e)}")
-    raise
+  max_retries = 3 
+  retry_delay = 3
+  for attempt in range(1, max_retries+1):
+    try:
+      app_logger.info(f"Attempting to connect to Redis (attempt {attempt}/{max_retries})")
+      await redis_client.ping()
+      app_logger.info("Redis Connection Successful")
+      return
+    except redis.ConnectionError as e:
+      app_logger.warning(f"Redis connection attempt {attempt} failed: {e}")
+      if attempt == max_retries:
+          app_logger.error(f"Failed to connect to Redis after {max_retries} attempts: {e}")
+          raise RuntimeError(f"Redis connection failed after {max_retries} attempts: {e}") from e
+      app_logger.info(f"Retrying Redis connection in {retry_delay} seconds...")
+      await asyncio.sleep(retry_delay)
+    except Exception as e:
+      app_logger.error(f"Unexpected error connecting to Redis (attempt {attempt}): {e}")
+      
+      if attempt == max_retries:    
+        raise RuntimeError(f"Redis connection failed after {max_retries} attempts: {e}") from e
+    
+      app_logger.info(f"Retrying in {retry_delay} seconds...")
+      await asyncio.sleep(retry_delay)
+
+  # This should never be reached, but just in case
+  raise RuntimeError("Redis connection failed: Maximum retries exceeded")
+
+
+
 
 # -----------------------------------------
 # Helper functions for urls
