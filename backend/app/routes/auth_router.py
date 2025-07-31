@@ -1,99 +1,125 @@
-from fastapi import APIRouter, HTTPException, Request, Response, status
-from argon2 import PasswordHasher
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from app.services.logger import app_logger
-from app.services.postgres import connect_db
 from app.config import settings
 from app.types import SignupRequest, LoginRequest
-from app.services.auth_utils import create_session, set_session_cookie
+from app.services.auth_utils import create_session, require_auth, set_session_cookie
+from app.services.auth_utils import hash_password, verify_password
+from app.repositories.PostgresUserRepo import PostgresUserRepo, get_user_repo
+from app.repositories.PostgresSessionRepo import PostgresSessionRepo, get_session_repo
 
-router = APIRouter()
-password_hasher = PasswordHasher() # TODO: Is this fine to be global?
+auth_router = APIRouter()
 
 # # -----------------------------------------------------------------------------
 # Native Authentication Routes
 # # -----------------------------------------------------------------------------
 
-@router.post("/auth/signup")
-async def signup(signup_request: SignupRequest):
+# TODO: Should verify that this actually works
+
+@auth_router.post("/api/auth/signup")
+async def signup(signup_request: SignupRequest, postgres_user_repo: PostgresUserRepo = Depends(get_user_repo)):
   """Endpoint for handling native user signup"""
-  db = await connect_db()
-  user = await db.fetchrow("SELECT * FROM users WHERE email = $1", signup_request.email)
+
+  user = await postgres_user_repo.get_user_by_email(signup_request.email)
   if user:
+    app_logger.warning(f"Failed signup attempt since user with email '{signup_request.email}' already exists!")
     raise HTTPException(
       status_code=status.HTTP_400_BAD_REQUEST,
       detail="User with this email already exists."
     )
   
-  password_hash = password_hasher.hash(signup_request.password)
-  await db.execute(
-    """INSERT INTO users (email, password_hash) VALUES ($1, $2, $3)""",
-    signup_request.email,
+  password_hash = hash_password(signup_request.password)
+  await postgres_user_repo.create_user(
+    signup_request.email, 
+    signup_request.full_name,
     password_hash,
   )
-  await db.close()
   app_logger.info(f"User {signup_request.email} was created successfully.")
   return status.HTTP_201_CREATED
 
-@router.post("/auth/login")
-async def login(login_request: LoginRequest, response: Response):
+@auth_router.post("/api/auth/login")
+async def login(login_request: LoginRequest, response: Response, postgres_user_repo: PostgresUserRepo = Depends(get_user_repo), postgres_session_repo: PostgresSessionRepo = Depends(get_session_repo)):
   """Endpoint for handling native user login
-  
   
   Note: This endpoint has two main responsibillities:
     1. Setting a cookie in the response, used to authenticate following subsequent backend requests (proof of auth).
     2. Sending back user info about the currently logged in user for display purposes and it can also act as client-side auth.
   """  
-  db_conn = await connect_db()
-  user = await db_conn.fetchrow("SELECT * FROM users WHERE email = $1", login_request.email)
+
+  user = await postgres_user_repo.get_user_by_email(login_request.email)
   if not user:
+    app_logger.warning(f"Login attempt with invalid email: {login_request.email}")
     raise HTTPException(
       status_code=status.HTTP_400_BAD_REQUEST,
-      detail="Username or password is incorrect!"
+      detail="Email or password is incorrect!"
     )
   
-  matched = password_hasher.verify(user["password_hash"], login_request.password)
+  matched = verify_password(login_request.password, user["password_hash"])
   if not matched:
+    app_logger.warning(f"Failed password attempt for user: {login_request.email}")
     raise HTTPException(
       status_code=status.HTTP_400_BAD_REQUEST,
-      detail="Username or password is incorrect!"
+      detail="Email or password is incorrect!"
     )
   
+  user_info = create_user_info(user)
+
+  user_id = user_info["id"]
+  user_email = user_info["email"]
+
+  # Check if user already has a valid session (existing and non-expired) 
+  existing_session = await postgres_session_repo.get_session_by_user_id(user_id)
+  if existing_session:
+    await postgres_session_repo.delete_session_by_user_id(user_id)
+    app_logger.info(f"User {user_email} has a previous session (active/inactive). Destroying previous session.")
+    
+  # Else no existing session, create a new session in database and set cookie
+  session_token = await create_session(user_id)
+  set_session_cookie(response, session_token)
+  app_logger.info(f"New session created for '{user_email}'!")
+  return user_info
+
+@auth_router.get("/api/auth/logout")
+async def logout(request: Request, response: Response, postgres_session_repo: PostgresSessionRepo = Depends(get_session_repo)):
+  """Endpoint for handling user logout"""
+
+  ''''''
+  session_token = request.cookies.get(settings.SESSION_COOKIE_NAME)
+  if not session_token:
+    app_logger.info("No session cookie detected, no further action")
+    return status.HTTP_204_NO_CONTENT
+  
+  response.delete_cookie(settings.SESSION_COOKIE_NAME)
+  await postgres_session_repo.delete_session_by_token(session_token)
+  app_logger.info("Cookie detected, user logged out, and session deleted in DB")
+  
+  return status.HTTP_200_OK
+  
+
+@auth_router.get("/api/auth/verify")
+async def verify(user_id: str = Depends(require_auth), postgres_user_repo: PostgresUserRepo = Depends(get_user_repo)):
+  """Verifies whether a user is authenticated, if so we'll return the user's information back
+  
+  Note: This is most useful for the frontend as you'd display this info on a dashboard, use it for personalization.
+  This may change over time depending on what data the app supports.
+  However again we won't return sensitive info like passsword_hash and other stuff.  
+  """
+  # At this point user has a valid session, let's return user information for the client side
+  user = await postgres_user_repo.get_user_by_id(user_id)
+  if not user:
+    app_logger.warning("User was authenticated (session found), but user themselves didn't exist in db")
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+  return create_user_info(user)
+
+
+# # --------------------------------------------------
+# Helper functions for auth router.
+# # --------------------------------------------------
+def create_user_info(user):
+  """Creates a filtered user info object that contains info that we can send back to the client"""
   user_info = {
     "id": user['id'],
     "email": user['email'],
     "is_admin": user['is_admin'],
   }
-
-  # Check if user already has an active (not expired) session
-  existing_session = await db_conn.fetchrow(
-    """SELECT * FROM sessions WHERE user_id = $1 AND expires_at > NOW()"""
-  )
-  
-  # Note: A normal user would not be able to access this endpoint (from client side) if they were already logged in.
-  # This is a safeguard to ensure we're not creating multiple session for the same user.
-  if existing_session:
-    app_logger.info(f"User {user_info['email']} already has an active session.")
-    await db_conn.close()
-    return user_info
-  
-  # Create session in database and set cookie
-  session_token = await create_session(user["id"], db_conn)
-  set_session_cookie(response, session_token)
-  await db_conn.close()
-  app_logger.info(f"User {user_info['email']} was logged in.")
   return user_info
-
-@router.get("/auth/logout")
-async def logout(request: Request, response: Response):
-  """Endpoint for handling user logout"""
-  session_token = request.cookies.get(settings.SESSION_COOKIE_NAME)
-  response.delete_cookie(settings.SESSION_COOKIE_NAME)
-  if session_token:
-    db_conn = await connect_db()
-    await db_conn.execute(
-      """DELETE FROM sessions WHERE session_token = $1"""
-      , session_token
-    )
-    await db_conn.close()
-  app_logger.info("User logged out successfully.")
-  return response

@@ -1,5 +1,6 @@
 COMPOSE_FILE=docker-compose.dev.yaml
 PROJECT_NAME=url-shortener
+WEB_SERVICE_NAME=web
 
 .PHONY: up down restart logs shell frontend 
 
@@ -9,12 +10,11 @@ up:
 
 # Shut down the webapp
 down:
-	@docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) stop web
+	@docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) stop $(WEB_SERVICE_NAME)
 
 # Shut down all containers
 down-all:
 	@docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) down
-
 
 # Shut down the app and clear all data!
 # Note: Probably good if you want to clear all existing data
@@ -24,9 +24,13 @@ clean:
 # Restart the application
 restart: down up
 
-# Show the real-time logs for the container
+# Show the real-time logs for the web service
 logs:
+	@docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) logs -f $(WEB_SERVICE_NAME)
+
+logs-all:
 	@docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) logs -f
+
 
 # For execing into the container
 shell:

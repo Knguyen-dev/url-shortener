@@ -36,7 +36,8 @@ class Settings(BaseSettings):
   IS_PRODUCTION: bool = ENVIRONMENT == "PRODUCTION"
 
   # Session Authentication 
-  SESSION_LIFETIME: timedelta = timedelta(minutes=30) 
+  SESSION_IDLE_LIFETIME: timedelta = timedelta(minutes=30)
+  SESSION_ABSOLUTE_LIFETIME: timedelta = timedelta(hours=3)
   SESSION_COOKIE_NAME: str = "session_id"
   
   COOKIE_SECURE: bool = IS_PRODUCTION
