@@ -9,9 +9,9 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 -- Sessions table
+-- TODO: Can update this to only use user_id as primary key
 CREATE TABLE IF NOT EXISTS sessions (
-    id SERIAL PRIMARY KEY,
-    user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id INT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
     session_token TEXT NOT NULL UNIQUE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     last_active_at TIMESTAMPTZ NOT NULL DEFAULT NOW() -- for idle timeout

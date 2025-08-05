@@ -12,7 +12,7 @@ class PostgresUserRepo:
 
   async def get_all_users(self):
     async with self.pool.acquire() as conn:
-      return await conn.fetchrow("SELECT * FROM users")
+      return await conn.fetch("SELECT * FROM users")
 
   async def get_user_by_email(self, email: str):
     async with self.pool.acquire() as conn:
@@ -29,14 +29,26 @@ class PostgresUserRepo:
         password_hash
       )
 
-  async def get_user_by_id(self, user_id: str):
+  async def update_is_admin_by_id(self, is_admin: bool, user_id: int):
+    async with self.pool.acquire() as conn:
+      result = await conn.execute(
+        "UPDATE users SET is_admin = $1 WHERE id = $2",
+        is_admin,
+        user_id
+      )
+      updated_count = int(result.split()[-1])  # Extracts the number from 'UPDATE 1'
+      return updated_count
+
+  async def get_user_by_id(self, user_id: int):
     async with self.pool.acquire() as conn:
       return await conn.fetchrow("SELECT * FROM users WHERE id = $1", user_id) 
   
-  async def delete_user_by_id(self, user_id: str):
+  async def delete_user_by_id(self, user_id: int) -> int:
     async with self.pool.acquire() as conn:
-      return await conn.fetchrow("DELETE FROM users WHERE id = $1", user_id)
+      result = await conn.execute("DELETE FROM users WHERE id = $1", user_id)
+      deletion_count = int(result.split()[-1])  # Extracts the number from 'DELETE 1'
+      return deletion_count
 
-async def get_user_repo() -> PostgresUserRepo:
+def get_user_repo() -> PostgresUserRepo:
   pool = get_postgres_pool()
   return PostgresUserRepo(pool)

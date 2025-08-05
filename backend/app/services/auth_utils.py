@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 from datetime import datetime, timezone
 import argon2
 from fastapi import HTTPException, Request, Response, status
@@ -8,6 +8,18 @@ import secrets
 from argon2 import PasswordHasher
 from app.repositories.PostgresSessionRepo import get_session_repo
 from app.repositories.PostgresUserRepo import get_user_repo
+
+def create_user_info_list(users: List[any]):
+  """Creates a filtered user info object that contains info that we can send back to the client"""
+  user_info_list = []
+  for u in users:
+    user_info = {
+      "id": u['id'],
+      "email": u['email'],
+      "is_admin": u['is_admin'],
+    }
+    user_info_list.append(user_info)
+  return user_info_list
 
 
 # # --------------------------------------------------
@@ -111,19 +123,37 @@ def check_session_expiration(session: Dict[any, any]) -> Tuple[bool, str]:
 
   return False, "valid"
 
-async def validate_session(session_token: str) -> Optional[Dict[any, any]]:
-  """Validates session and returns session data if valid"""
+async def validate_session(session_token: str, response: Response) -> Optional[Dict[any, any]]:
+  """Validates session and returns session data if valid. Handles database and cookie cleanup for invalid sessions.
+
+  Args:
+      session_token (str): String assumed to be a session toekn.
+      response (Response): response object that we'll use to cleanup session cookies if needed.
+
+  Returns:
+      Optional[Dict[any, any]]: Session object
+  """
+  
   try:
     postgres_session_repo = get_session_repo()
     session = await postgres_session_repo.get_session_by_token(session_token)
+    
+    # If session token wasn't associated with any session, delete the invalid cookie 
+    # that got us here.
     if session is None:
+      response.delete_cookie(settings.SESSION_COOKIE_NAME)
       return None  
 
-    # If expired, remove from database, log reason, etc.
+    # If we found an expired session:
+    # - Delete cookie associated with session
+    # - Delete session from database
+    # - Log reason why the session was deleted (idle, or absolute timeout)
     is_expired, reason = check_session_expiration(session)
     if is_expired:
       user_id = session.get("user_id", "unknown user_id")
       app_logger.warning(f"Session expired ({reason}) for user: {user_id}")
+      response.delete_cookie(settings.SESSION_COOKIE_NAME)
+      await postgres_session_repo.delete_session_by_token(session_token)
       return None
     
     return session
@@ -150,12 +180,11 @@ async def authenticate_request(request: Request, response: Response) -> None:
       detail="Authentication failed: No session token provided"
     )
   
-  session = await validate_session(session_token)
-  if session is None:
-    response.delete_cookie(settings.SESSION_COOKIE_NAME)
-    postgres_session_repo = get_session_repo()
-    await postgres_session_repo.delete_session_by_token(session_token)
+  # Check to see if we have a valid session for that session token
+  session = await validate_session(session_token, response)
 
+  # If no valid session found, return an authentication error
+  if session is None:
     app_logger.warning("Authentication failed: Invalid or expired session!")
     raise HTTPException(
       status_code=status.HTTP_401_UNAUTHORIZED,
@@ -168,7 +197,7 @@ async def authenticate_request(request: Request, response: Response) -> None:
 # # --------------------------------------------------
 # Dependency Injection for protected routes
 # # --------------------------------------------------
-async def require_auth(request: Request, response: Response) -> str:
+async def require_auth(request: Request, response: Response) -> int:
   """Dependency that ensures user is authenticated and returns user id"""
   user_id = await authenticate_request(request, response)
 
@@ -183,7 +212,10 @@ async def require_auth(request: Request, response: Response) -> str:
     
   return user_id
 
-async def require_admin(request: Request, response: Response) -> str:
+
+
+
+async def require_admin(request: Request, response: Response) -> int:
   """Dependency that ensures user is authenticated and an administrator"""
   user_id = await require_auth(request, response)
   try:
@@ -202,7 +234,7 @@ async def require_admin(request: Request, response: Response) -> str:
     app_logger.error(f"Error checking admin status for user {user_id}: {str(e)}")
     raise HTTPException(
       status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-      detail="Error verying admin privileges"
+      detail="Error verifying admin privileges"
     )
   
 async def optional_auth(request: Request, response: Response) -> str:

@@ -36,5 +36,8 @@ logs-all:
 shell:
 	@docker exec -it $(shell docker ps -q -f "name=$(PROJECT_NAME)-web") /bin/sh
 
+shell-postgres:
+	@docker exec -it url-shortener-postgres-1 psql -U dev -d postgres
+
 frontend:
 	cd frontend && npm run dev

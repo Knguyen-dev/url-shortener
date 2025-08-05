@@ -3,7 +3,7 @@ from app.services.logger import app_logger
 from app.config import settings
 from app.types import SignupRequest, LoginRequest
 from app.services.auth_utils import create_session, require_auth, set_session_cookie
-from app.services.auth_utils import hash_password, verify_password
+from app.services.auth_utils import hash_password, verify_password, create_user_info_list
 from app.repositories.PostgresUserRepo import PostgresUserRepo, get_user_repo
 from app.repositories.PostgresSessionRepo import PostgresSessionRepo, get_session_repo
 
@@ -12,8 +12,6 @@ auth_router = APIRouter()
 # # -----------------------------------------------------------------------------
 # Native Authentication Routes
 # # -----------------------------------------------------------------------------
-
-# TODO: Should verify that this actually works
 
 @auth_router.post("/api/auth/signup")
 async def signup(signup_request: SignupRequest, postgres_user_repo: PostgresUserRepo = Depends(get_user_repo)):
@@ -61,7 +59,7 @@ async def login(login_request: LoginRequest, response: Response, postgres_user_r
       detail="Email or password is incorrect!"
     )
   
-  user_info = create_user_info(user)
+  user_info = create_user_info_list([user])[0]
 
   user_id = user_info["id"]
   user_email = user_info["email"]
@@ -96,7 +94,7 @@ async def logout(request: Request, response: Response, postgres_session_repo: Po
   
 
 @auth_router.get("/api/auth/verify")
-async def verify(user_id: str = Depends(require_auth), postgres_user_repo: PostgresUserRepo = Depends(get_user_repo)):
+async def verify(user_id: int = Depends(require_auth), postgres_user_repo: PostgresUserRepo = Depends(get_user_repo)):
   """Verifies whether a user is authenticated, if so we'll return the user's information back
   
   Note: This is most useful for the frontend as you'd display this info on a dashboard, use it for personalization.
@@ -109,17 +107,4 @@ async def verify(user_id: str = Depends(require_auth), postgres_user_repo: Postg
     app_logger.warning("User was authenticated (session found), but user themselves didn't exist in db")
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
-  return create_user_info(user)
-
-
-# # --------------------------------------------------
-# Helper functions for auth router.
-# # --------------------------------------------------
-def create_user_info(user):
-  """Creates a filtered user info object that contains info that we can send back to the client"""
-  user_info = {
-    "id": user['id'],
-    "email": user['email'],
-    "is_admin": user['is_admin'],
-  }
-  return user_info
+  return create_user_info_list([user])[0]
