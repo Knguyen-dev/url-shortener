@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push: 
+    branches: [ 'main' ]
+  pull_request: 
+    branches: [ 'main' ]
+
+jobs:
+  # CI jobs handles all Continuous Integration tasks
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+
+      # Step 1: Checkout repository code
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+      
+      # Step 2: Setup Python, we'll use version 3.10 as that's what the project uses
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      
+      # Step 3: Install Astral UV. This is the package manager that the application uses
+      - name: Install Astral UV
+        run: pip install uv
+      
+      # Step 4: Install depndencies via Astral UV
+      # NOTE: The uv.lock file is needed to be in the repository for this to work.
+      - name: Install Dependencies
+        run: uv sync
+
+      # Step 5: Run ruff as a linter. It'll check for style issues and potential errors
+      - name: Run ruff linter
+        run: uv run ruff check . 
+
+      # Step 6: Run ruff's formatter in check mode. This ensures all code is properly formatted without 
+      # making any changes to the files.
+      - name: Run Ruff formatter 
+        run: uv run ruff format --check .
+
+      # Step 7: Run tests with pytest
+      - name: Run tests with pytest
+        run: uv run pytest
+
+      # Step 8: sBuild the docker iamge
+      - name: Build Docker Image
+        run: docker build . --file Dockerfile --tag url-shortener:latest
