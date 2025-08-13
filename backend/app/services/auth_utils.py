@@ -6,6 +6,7 @@ from app.config import settings
 from app.services.logger import app_logger
 import secrets
 from argon2 import PasswordHasher
+import bcrypt
 from app.repositories.PostgresSessionRepo import get_session_repo
 from app.repositories.PostgresUserRepo import get_user_repo
 
@@ -34,7 +35,7 @@ def hash_password(plaintext_password: str) -> str:
     app_logger.error(f"Failed to hash password: {str(e)}")
     raise
 
-def verify_password(plaintext_password: str, password_hash: str) -> str:
+def verify_password(plaintext_password: str, password_hash: str) -> bool:
   """Verifies a plaintext password and a password hash"""
   password_hasher = PasswordHasher()
   try:
@@ -50,6 +51,33 @@ def verify_password(plaintext_password: str, password_hash: str) -> str:
   except Exception as e:
     app_logger.error(f"Unexpected error during password verification: {str(e)}")
     return False  
+
+def hash_url_password(plaintext_password: str) -> str:
+  """Hashes a password to protect a url. Returns the password hash."""
+  try:
+    hashed_bytes = bcrypt.hashpw(plaintext_password.encode("utf-8"), bcrypt.gensalt())
+    return hashed_bytes.decode("utf-8")
+  except Exception as e:
+    # Note: Handle errors from bcrypt, they don't document errors well.
+    app_logger.error(f"Error hashing url password: {str(e)}")
+    raise
+      
+
+def verify_url_password(plaintext_password: str, password_hash: str) -> bool:
+  """Verifies whether a plaintext password matches its supposed hash. Returns true if it does, else false."""
+  try:
+    return bcrypt.checkpw(plaintext_password.encode("utf-8"), password_hash.encode("utf-8"))
+  except Exception as e:
+    # Handle the case where the hash is malformed or not a valid bcrypt hash
+    app_logger.error(f"Error verifying url password: {str(e)}")
+    return False
+
+
+  
+  
+
+
+
 
 # # --------------------------------------------------
 # Session Create Utilities

@@ -9,7 +9,8 @@ dependencies = [
     "uvicorn[standard]>=0.34.0",       # Webserver for FastAPI
     "pydantic-settings>=2.2.1",   # For our configuration setup
     "asyncpg>=0.30.0",            # Async PostgreSQL client
-    "argon2-cffi>=25.1.0",        # Password hashing
+    "argon2-cffi>=25.1.0",        # Password hashing for user accounts
+    "bcrypt>=4.3.0",              # Password hashing for urls (less stringent)
     "cryptography>=42.0.5",       # Cryptography for sessions
     "requests>=2.32.3",                # Requests, e.g. OIDC requests 
     "python-dotenv>=1.0.1",       # Allows for loading environment variables.
@@ -17,6 +18,14 @@ dependencies = [
     "redis==6.2.0",                    # Redis client, allows us to connect to redis instance
     "aiosmtplib>=2.0.2",          # Async SMTP Client
     "email-validator>=2.1.1",     # Validates email fields
+
+    # Testing Dependencies
+    # - pytest is the main test runner
+    # - httpx for async HTTP requests
+    # - pytest-asyncio for async test support
+    # - pytest-cov for coverage reporting (which is optional but recommended)
+    # - E2E tests can be used with pytest +httpx. Brow
+
 
 ]
 

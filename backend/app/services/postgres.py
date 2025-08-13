@@ -8,8 +8,8 @@ from .logger import app_logger
 _postgres_pool: Optional[asyncpg.Pool] = None
 
 
-# TODO: It's async but it's not even using await?
 def get_postgres_pool() -> asyncpg.Pool:
+    """Returns a reference to the postgres connection pool"""
     if _postgres_pool is None:
         raise RuntimeError("Postgres Pool wasn't initialized")
     return _postgres_pool

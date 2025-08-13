@@ -7,7 +7,7 @@ for index in range(len(character_set)):
 
 # NOTE: The dictionary allows O(1) look-ups on from_base_62
 
-def to_base_62(num: int) -> str:
+def encode_base_62(num: int) -> str:
   """Converts a number into a base62 string"""  
   if num == 0:
     return "0"
@@ -19,7 +19,7 @@ def to_base_62(num: int) -> str:
     encoded_str = character_set[remainder] + encoded_str
   return encoded_str
 
-def from_base_62(str: str) -> int:
+def decode_base_62(str: str) -> int:
   """Convert a base62 encoded string into a base 10 number"""
   total = 0
   for index, char in enumerate(reversed(str)):
