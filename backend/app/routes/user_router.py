@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from app.services.auth_utils import require_auth, require_admin, create_user_info_list
-from app.services.cassandra import cassandra_url_by_user_repo
+from app.repositories.CassandraUrlByUserRepo import get_cassandra_url_by_user_repo, CassandraUrlByUserRepo
 from app.repositories.PostgresUserRepo import PostgresUserRepo, get_user_repo
 from app.repositories.PostgresSessionRepo import PostgresSessionRepo, get_session_repo
 from app.services.logger import app_logger
@@ -13,7 +13,7 @@ user_router = APIRouter()
 
 # TODO: Verify this once url-router and service logic works correctly.
 @user_router.get("/api/users/{user_id}/urls")
-def get_urls_for_user(user_id: str, auth_user_id: str = Depends(require_auth)):
+def get_urls_for_user(user_id: str, cassandra_urls_by_user_repo: CassandraUrlByUserRepo = Depends(get_cassandra_url_by_user_repo), auth_user_id: str = Depends(require_auth)):
   """Gets all urls for an authenticated user
 
   Args:
@@ -31,7 +31,7 @@ def get_urls_for_user(user_id: str, auth_user_id: str = Depends(require_auth)):
       detail="Unauthorized to access these resources"
     )
 
-  urls = cassandra_url_by_user_repo.get_urls_by_user_id(user_id)
+  urls = cassandra_urls_by_user_repo.get_urls_by_user_id(user_id)
   return urls
 
 @user_router.get("/api/users")

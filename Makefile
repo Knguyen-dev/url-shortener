@@ -36,8 +36,35 @@ logs-all:
 shell:
 	@docker exec -it $(shell docker ps -q -f "name=$(PROJECT_NAME)-web") /bin/sh
 
-shell-postgres:
+psql:
 	@docker exec -it url-shortener-postgres-1 psql -U dev -d postgres
+
+
+# ===============================
+# Cassandra Helper Commands
+# ===============================
+# In cqlsh:
+#   List all keyspaces:
+#       DESCRIBE KEYSPACES;
+#
+#   Select a keyspace:
+#       USE my_keyspace;
+#
+#   List all tables in the current keyspace:
+#       DESCRIBE TABLES;
+#
+#   Inspect a specific table's schema:
+#       DESCRIBE TABLE my_table;
+#
+#   View table data:
+#       SELECT * FROM my_table LIMIT 20;
+#
+#   Exit:
+#       EXIT;
+# ===============================
+cql: 	
+	@docker exec -it url-shortener-cassandra-1 cqlsh -k urlshortener
+	
 
 frontend:
 	cd frontend && npm run dev
