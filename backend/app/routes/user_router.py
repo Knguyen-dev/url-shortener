@@ -10,10 +10,8 @@ user_router = APIRouter()
 # # ------------------------------------
 # User Routes
 # # ------------------------------------
-
-# TODO: Verify this once url-router and service logic works correctly.
 @user_router.get("/api/users/{user_id}/urls")
-def get_urls_for_user(user_id: str, cassandra_urls_by_user_repo: CassandraUrlByUserRepo = Depends(get_cassandra_url_by_user_repo), auth_user_id: str = Depends(require_auth)):
+def get_urls_for_user(user_id: int, cassandra_urls_by_user_repo: CassandraUrlByUserRepo = Depends(get_cassandra_url_by_user_repo), auth_user_id: str = Depends(require_auth)):
   """Gets all urls for an authenticated user
 
   Args:
@@ -26,11 +24,11 @@ def get_urls_for_user(user_id: str, cassandra_urls_by_user_repo: CassandraUrlByU
   for now admins won't be able to see other people's urls either.
   """
   if user_id != auth_user_id:
+    app_logger.warning(f"User '{auth_user_id}' tried to get the URLs of user '{user_id}'!")
     raise HTTPException(
       status_code=status.HTTP_401_UNAUTHORIZED,
       detail="Unauthorized to access these resources"
     )
-
   urls = cassandra_urls_by_user_repo.get_urls_by_user_id(user_id)
   return urls
 

@@ -15,7 +15,7 @@ class CassandraUrlByUserRepo:
       """      
     )
 
-    self.get_urls_by_user_statement = session.prepare(
+    self.get_urls_by_user_prepared = session.prepare(
       "SELECT * FROM url_by_user_id WHERE user_id = ?",
     )
 
@@ -50,10 +50,10 @@ class CassandraUrlByUserRepo:
   def get_urls_by_user_id(self, user_id: str):
     """Gets all urls for a given user_id"""  
     result = self.session.execute(
-      self.get_urls_by_user_statement,
+      self.get_urls_by_user_prepared,
       (user_id,)
     )
-    return result
+    return [row._asdict() for row in result]
   
   def get_single_url(self, user_id: int, backhalf_alias: str):
     """Returns a single url"""
@@ -65,8 +65,7 @@ class CassandraUrlByUserRepo:
     if row:
       row = row._asdict()
     return row
-
-    
+  
   def delete_single_url(self, user_id: int, backhalf_alias: str):
     """Deletes a single url with user_id and backhalf_alias"""
     result = self.session.execute(

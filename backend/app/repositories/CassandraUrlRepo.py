@@ -7,8 +7,6 @@ class CassandraUrlRepo:
   def __init__(self, session: Session):
     self.session = session
 
-
-    
     self.get_url_prepared = session.prepare(
       "SELECT * FROM url_by_backhalf_alias WHERE backhalf_alias = ?"
     )
@@ -18,8 +16,6 @@ class CassandraUrlRepo:
           backhalf_alias, user_id, original_url, password_hash, is_active
       ) VALUES (?, ?, ?, ?, ?)
     """)
-
-
 
     self.delete_url_by_alias_statement = session.prepare(
       "DELETE FROM url_by_backhalf_alias WHERE backhalf_alias = ?"
@@ -35,6 +31,15 @@ class CassandraUrlRepo:
       """
     )
 
+    self.update_url_is_active_prepared = session.prepare(
+      """
+      UPDATE url_by_backhalf_alias 
+      SET 
+        is_active = ?
+      WHERE 
+        backhalf_alias = ?
+      """
+    )
 
   def create_url(self, backhalf_alias: str, user_id: int, original_url: str, password_hash: Optional[str], is_active: bool):
     """Creates a url"""
@@ -76,6 +81,13 @@ class CassandraUrlRepo:
       (is_active, password_hash, backhalf_alias)
     )
     return result
+  
+  def update_url_is_active(self, is_active: str, backhalf_alias: str):
+    """Updates the status of the URL only"""
+    self.session.execute(
+      self.update_url_is_active_prepared,
+      (is_active, backhalf_alias)
+    )
 
 def get_cassandra_url_repo():
   """Dependency injection provider for the url repo"""

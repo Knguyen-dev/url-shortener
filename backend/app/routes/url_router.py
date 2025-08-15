@@ -133,7 +133,6 @@ async def update_url(
 ):
   """Endpoint for updating an existing url"""
   try:
-
     existing_url = cassandra_url_by_user_repo.get_single_url(user_id, backhalf_alias)
     if not existing_url:
       raise HTTPException(
@@ -154,15 +153,35 @@ async def update_url(
           detail="Cannot set and remove password at the same time."
       )
     
-    # ----- Handle Password Updates -----
     '''
+    ----- Handle Password Updates -----
     1. By default, keep existing password hash
     2. If we're removing the password, set the hash to None
     3. Else if the user defined a password:
       - This means they want to set/change the field.
       - Create new password hash
+    4. Else the client didn't want to remove the password (if it even exists) and they didn't change or set one.
+      This means that the password_hash field doesn't need to be changed.
+
+    Note: Essentially our url_by_user_id table is for fetching all url data to show to the 
+    user dashboard. It has is_active and password fields but not the password_hash field 
+    because I don't think it's necessary for the user to re-confirm an old password for a link
+    that they're going to change the password for. 
+
+    There are two clear solutions:
+    1. Add the password_hash field to the url_by_user_id repo
+    2. Update the logic below have a flag indicating whether we're going to update 
+      the password field or not. Then if is_password_change is true, then we'd call
+      cassandra_url_repo.update_url_by_alias(is_active, password_hash, backhalf_alias).
+
+      However if is_password_change is false, that means there's no need to update the password_hash
+      field on the main urls table, the only thing you'd have to update would be the is_active field.
+      You'd just use a separate query cassandra_url_update_is_active(is_active). This removes the need
+      to update your data schema logic to include the password_hash field in the url_by_user_id table 
+      and it prevents the need to do an extra query on the main URL table just to get the original 
+      password. 
     '''
-    password_hash = existing_url.get("password_hash")  
+    is_password_changed = True
     if update_url_request.is_remove_password:
       password_hash = None
     elif update_url_request.password: 
@@ -172,25 +191,25 @@ async def update_url(
           detail="Password and confirm password don't match."
         )
       password_hash = hash_url_password(update_url_request.password)
-    
+    else:
+      is_password_changed = False
+
     # ----- Handle Other Optional Updates -----
     # Note: Use the new properties if defined, else default to existing ones
     is_active = update_url_request.is_active if update_url_request.is_active is not None else existing_url.get("is_active")
-
-
-    # Note current URL doesn't 
     title = update_url_request.title if update_url_request.title is not None else existing_url.get("title")
     
-
-
-    # TODO: If password isn't defined, then it's nulled; Fixed as we now show the right field
-
     # ----- Update Cassandra Tables --------
-    cassandra_url_repo.update_url_by_alias(
-      is_active,  
-      password_hash,
-      backhalf_alias   
-    )    
+    if is_password_changed:
+      cassandra_url_repo.update_url_by_alias(
+        is_active,  
+        password_hash,
+        backhalf_alias   
+      )    
+    else:
+      # Now only need to update the 'is_active' field
+      cassandra_url_repo.update_url_is_active(is_active, backhalf_alias)
+
     cassandra_url_by_user_repo.update_url(
        is_active,
        title,
