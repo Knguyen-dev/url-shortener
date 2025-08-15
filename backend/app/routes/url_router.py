@@ -50,57 +50,6 @@ async def url_verify_password(
   
   update_clicks_and_redirect(backhalf_alias, existing_url['original_url'], cassandra_click_repo)
   
-@url_router.post("/api/urls")
-async def create_url(
-   create_url_request: CreateUrlRequest, 
-   user_id: int = Depends(require_auth), 
-   alias_generator: AliasGenerator = Depends(get_alias_generator),
-   cassandra_url_repo: CassandraUrlRepo = Depends(get_cassandra_url_repo), 
-   cassandra_url_by_user_repo: CassandraUrlByUserRepo = Depends(get_cassandra_url_by_user_repo),
-   cassandra_click_repo: CassandraClickRepo = Depends(get_cassandra_click_repo)
-   ):
-  """Handles when an authenticated user wants to create a short url"""
-
-  is_valid, message = is_valid_url(create_url_request.original_url)
-  if not is_valid:
-     app_logger.warning(f"URL invalid: '{message}' with url '{create_url_request.original_url}'.")
-     return HTTPException(
-        status=status.HTTP_400_BAD_REQUEST,
-        message=message
-      )
-  
-  password_hash = None
-  if create_url_request.password:
-    app_logger.info(f"Generating URL password hash!")
-    password_hash = hash_url_password(create_url_request.password)
-  created_at = datetime.now(timezone.utc)
-
-  backhalf_alias = alias_generator.generate_backhalf_alias()
-  cassandra_url_repo.create_url(
-     backhalf_alias,
-     user_id,
-     create_url_request.original_url,
-     password_hash,
-     create_url_request.is_active
-  )
-  cassandra_url_by_user_repo.create_url(
-    user_id,
-    backhalf_alias,
-    create_url_request.original_url,
-    create_url_request.is_active,
-    create_url_request.title,
-    created_at
-  )
-  cassandra_click_repo.create_clicks(backhalf_alias, 0)
-
-  # Return the URL like it's from the main urls table; omit password hash though
-  return {
-    "backhalf_alias": backhalf_alias,
-    "user_id": user_id,
-    "original_url": create_url_request.original_url,
-    "is_active": create_url_request.is_active
-  }
-
 @url_router.get("/api/urls/{backhalf_alias}")
 async def get_url(
   backhalf_alias: str, 
@@ -141,27 +90,38 @@ async def delete_url(
    cassandra_click_repo: CassandraClickRepo = Depends(get_cassandra_click_repo)
   ):
   """Handles deleting a url given it's backhalf alias"""
-  existing_url = cassandra_url_repo.get_url_by_alias(backhalf_alias)
-  if not existing_url:
-    raise HTTPException(
-       status_code=status.HTTP_404_NOT_FOUND,
-       detail="Url not found"
-    )
-  
-  if existing_url["user_id"] != user_id:
-    app_logger.warning(f"User ID '{user_id}' unauthorized to delete url from userID '{existing_url['user_id']}'")
-    raise HTTPException(
-      status_code=status.HTTP_401_UNAUTHORIZED,
-      detail="Not authorized to delete this url"
-    )
-  
-  cassandra_url_repo.delete_url_by_alias(backhalf_alias)
-  cassandra_url_by_user_repo.delete_single_url(user_id, backhalf_alias)
-  cassandra_click_repo.delete_clicks(backhalf_alias)
+  try: 
+    existing_url = cassandra_url_repo.get_url_by_alias(backhalf_alias)
+    if not existing_url:
+      raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail="Url not found"
+      )
 
-  return {
-     "message": f"Url with backhalf alias {backhalf_alias} was deleted!"
-  }
+    if existing_url['user_id'] != user_id:
+      app_logger.warning(f"User ID '{user_id}' unauthorized to delete url from userID '{existing_url['user_id']}'")
+      raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Not authorized to delete this url"
+      )
+    
+    cassandra_url_repo.delete_url_by_alias(backhalf_alias)
+    app_logger.info("Deleted url in main table")
+    cassandra_url_by_user_repo.delete_single_url(user_id, backhalf_alias)
+    app_logger.info("Deleted url in secondary table")
+    cassandra_click_repo.delete_clicks(backhalf_alias)
+    app_logger.info("Deleted url in clicks table")
+    return {
+      "message": f"Url with backhalf alias {backhalf_alias} was deleted!"
+    }   
+  except HTTPException as e:
+    raise e
+  except Exception as e:
+    app_logger.warning(f"Error deleting url: {str(e)}")
+    raise HTTPException(
+      status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+      detail="Error deleting the url. Please try again later"
+    ) 
 
 @url_router.patch("/api/urls/{backhalf_alias}")
 async def update_url(
@@ -172,34 +132,68 @@ async def update_url(
   cassandra_url_by_user_repo: CassandraUrlByUserRepo = Depends(get_cassandra_url_by_user_repo),
 ):
   """Endpoint for updating an existing url"""
-  existing_url = cassandra_url_repo.get_url_by_alias(backhalf_alias)
-  if not existing_url:
-    raise HTTPException(
-       status_code=status.HTTP_404_NOT_FOUND,
-       detail="Url not found"
-    )
-  
-  if existing_url["user_id"] != user_id:
-    app_logger.warning(f"UserID '{user_id}' unauthorized to update url from userID '{existing_url['user_id']}'")
-    raise HTTPException(
-      status_code=status.HTTP_401_UNAUTHORIZED,
-      detail="Not authorized to update this url"
-    )
-
   try:
-    password_hash = None
-    if update_url_request.password:
+
+    existing_url = cassandra_url_by_user_repo.get_single_url(user_id, backhalf_alias)
+    if not existing_url:
+      raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail="Url not found"
+      )
+    
+    if existing_url["user_id"] != user_id:
+      app_logger.warning(f"UserID '{user_id}' unauthorized to update url from userID '{existing_url['user_id']}'")
+      raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Not authorized to update this url"
+      )
+    
+    if update_url_request.password and update_url_request.is_remove_password:
+      raise HTTPException(
+          status_code=status.HTTP_400_BAD_REQUEST,
+          detail="Cannot set and remove password at the same time."
+      )
+    
+    # ----- Handle Password Updates -----
+    '''
+    1. By default, keep existing password hash
+    2. If we're removing the password, set the hash to None
+    3. Else if the user defined a password:
+      - This means they want to set/change the field.
+      - Create new password hash
+    '''
+    password_hash = existing_url.get("password_hash")  
+    if update_url_request.is_remove_password:
+      password_hash = None
+    elif update_url_request.password: 
+      if update_url_request.password != update_url_request.confirm_password:
+        raise HTTPException(
+          status_code=status.HTTP_400_BAD_REQUEST,
+          detail="Password and confirm password don't match."
+        )
       password_hash = hash_url_password(update_url_request.password)
     
-    # Update the main and user-url table
+    # ----- Handle Other Optional Updates -----
+    # Note: Use the new properties if defined, else default to existing ones
+    is_active = update_url_request.is_active if update_url_request.is_active is not None else existing_url.get("is_active")
+
+
+    # Note current URL doesn't 
+    title = update_url_request.title if update_url_request.title is not None else existing_url.get("title")
+    
+
+
+    # TODO: If password isn't defined, then it's nulled; Fixed as we now show the right field
+
+    # ----- Update Cassandra Tables --------
     cassandra_url_repo.update_url_by_alias(
-      update_url_request.is_active,  
+      is_active,  
       password_hash,
       backhalf_alias   
     )    
     cassandra_url_by_user_repo.update_url(
-       update_url_request.is_active,
-       update_url_request.title,
+       is_active,
+       title,
        user_id,
        backhalf_alias
     )
@@ -207,6 +201,8 @@ async def update_url(
     return {
        "message": f"Updated URL '{backhalf_alias}'!"
     }
+  except HTTPException as e:
+    raise
   except Exception as e:
      app_logger.error(f"Error updating URL: {str(e)}")
      raise HTTPException(
@@ -214,6 +210,66 @@ async def update_url(
         detail="Error updating URL. Internal error, try again later."
      )
 
+@url_router.post("/api/urls")
+async def create_url(
+   create_url_request: CreateUrlRequest, 
+   user_id: int = Depends(require_auth), 
+   alias_generator: AliasGenerator = Depends(get_alias_generator),
+   cassandra_url_repo: CassandraUrlRepo = Depends(get_cassandra_url_repo), 
+   cassandra_url_by_user_repo: CassandraUrlByUserRepo = Depends(get_cassandra_url_by_user_repo),
+   cassandra_click_repo: CassandraClickRepo = Depends(get_cassandra_click_repo)
+   ):
+  """Handles when an authenticated user wants to create a short url"""
+
+  is_valid, message = is_valid_url(create_url_request.original_url)
+  if not is_valid:
+     app_logger.warning(f"URL invalid: '{message}' with url '{create_url_request.original_url}'.")
+     return HTTPException(
+        status=status.HTTP_400_BAD_REQUEST,
+        message=message
+      )
+  
+  password_hash = None
+  if create_url_request.password:
+    app_logger.info(f"Generating URL password hash!")
+    password_hash = hash_url_password(create_url_request.password)
+  
+  try:
+    backhalf_alias = alias_generator.generate_backhalf_alias()
+    cassandra_url_repo.create_url(
+      backhalf_alias,
+      user_id,
+      create_url_request.original_url,
+      password_hash,
+      create_url_request.is_active
+    )
+  
+    cassandra_url_by_user_repo.create_url(
+      user_id,
+      backhalf_alias,
+      create_url_request.original_url,
+      create_url_request.is_active,
+      create_url_request.title,
+      datetime.now(timezone.utc)
+    )
+    cassandra_click_repo.update_url_clicks(backhalf_alias, 0)
+    return {
+      "backhalf_alias": backhalf_alias,
+      "user_id": user_id,
+      "original_url": create_url_request.original_url,
+      "is_active": create_url_request.is_active
+    }
+  except Exception as e:
+    app_logger.error(f"Error creating a url: {str(e)}")
+    raise HTTPException(
+       detail="Internal Server Error. Please try again later", 
+       status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+    )
+     
+  
+
+  # Return the URL like it's from the main urls table; omit password hash though
+  
 # # ---------------------------------------------------
 # Utility or service functions to help url routers
 # # ---------------------------------------------------

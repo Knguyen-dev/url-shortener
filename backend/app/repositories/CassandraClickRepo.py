@@ -8,7 +8,7 @@ class CassandraClickRepo:
 
     # Note: Due to the nature of cassandra, you can't insert into a counter. You can use this statement to 
     # either create a new row or update an existing row.
-    self.update_clicks_statement = session.prepare(
+    self.update_clicks_prepared = session.prepare(
       "UPDATE url_clicks_by_backhalf_alias SET total_clicks = total_clicks + ? WHERE backhalf_alias = ?"
     )
 
@@ -30,26 +30,27 @@ class CassandraClickRepo:
         click_count (int): The number of clicks to add
     """
     self.session.execute(
-      self.update_clicks_statement,
+      self.update_clicks_prepared,
       (click_count, backhalf_alias)
     )
     
-
   def get_total_clicks(self, backhalf_alias: str) -> int:
-    """Retrieves the total_clicks for a givne backhalf_alias
-
+    """Retrieves the total_clicks for a given backhalf_alias
     Args:
         backhalf_alias (str): Alias for the url
-
     Returns:
         int: The total number of clicks, or 0 not found.
     """
     row = self.session.execute(
       self.get_clicks_statement,
       (backhalf_alias,)
-    )
-    return row["total_clicks"] if row else 0
+    ).one()
     
+    total_clicks = 0
+    if row:
+      row = row._asdict()
+      total_clicks = row["total_clicks"]
+    return total_clicks
 
   def delete_clicks(self, backhalf_alias: str) -> None:
     """Deletes a row by backhalf_alias 

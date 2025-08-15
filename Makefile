@@ -44,6 +44,13 @@ psql:
 # Cassandra Helper Commands
 # ===============================
 # In cqlsh:
+#   SELECT * FROM url_by_backhalf_alias;
+# 	SELECT * FROM url_by_user_id;
+#   SELECT * FROM url_clicks_by_backhalf_alias;
+#
+#   DELETE FROM url_by_backhalf_alias;
+#   TRUNCATE url_by_backhalf_alias;
+#
 #   List all keyspaces:
 #       DESCRIBE KEYSPACES;
 #
@@ -65,6 +72,8 @@ psql:
 cql: 	
 	@docker exec -it url-shortener-cassandra-1 cqlsh -k urlshortener
 	
+redis:
+	@docker exec -it $(PROJECT_NAME)-redis-1 redis-cli
 
 frontend:
 	cd frontend && npm run dev

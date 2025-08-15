@@ -6,22 +6,24 @@ class CassandraUrlByUserRepo:
   def __init__(self, session: Session):
     self.session = session
 
-    self.create_url_statement = """
+    self.create_url_prepared = session.prepare(
+      """
       INSERT INTO url_by_user_id 
         (user_id, backhalf_alias, original_url, is_active, title, created_at) 
       VALUES 
         (?, ?, ?, ?, ?, ?)
-    """  
+      """      
+    )
 
     self.get_urls_by_user_statement = session.prepare(
       "SELECT * FROM url_by_user_id WHERE user_id = ?",
     )
 
-    self.get_single_url_statement = session.prepare(
+    self.get_single_url_prepared = session.prepare(
       "SELECT * FROM url_by_user_id WHERE user_id = ? AND backhalf_alias = ?"
     )
 
-    self.delete_single_url_statement = session.prepare(
+    self.delete_single_url_prepared = session.prepare(
       "DELETE FROM url_by_user_id WHERE user_id = ? AND backhalf_alias = ?",
     )
 
@@ -33,11 +35,15 @@ class CassandraUrlByUserRepo:
       """UPDATE url_by_user_id SET is_active = ?, title = ? WHERE user_id = ? AND backhalf_alias = ?"""
     )
 
-  def create_url(self, user_id: str, backhalf_alias: str, original_url: str, is_active: bool, title: str, created_at: datetime):
-    """Creates a URL for a given user"""
+  def create_url(self, user_id: int, backhalf_alias: str, original_url: str, is_active: bool, title: str, created_at: datetime):
+    """Creates a URL for a given user
+    
+    Note: Timestamps are always stored as UTC milliseconds, but Cassandra 
+    doesn't store time zone info. Any timezone is auto converted to UTC before  storing
+    """
     result = self.session.execute(
-      self.create_url_statement,
-      (user_id, backhalf_alias, original_url, is_active, title, created_at)
+      self.create_url_prepared,
+      (user_id, backhalf_alias, original_url, is_active, title, created_at,)
     )
     return result
         
@@ -52,17 +58,20 @@ class CassandraUrlByUserRepo:
   def get_single_url(self, user_id: int, backhalf_alias: str):
     """Returns a single url"""
     result = self.session.execute(
-      self.get_single_url_statement,
+      self.get_single_url_prepared,
       (user_id, backhalf_alias)
     )
-    return result
+    row = result.one()
+    if row:
+      row = row._asdict()
+    return row
 
     
   def delete_single_url(self, user_id: int, backhalf_alias: str):
     """Deletes a single url with user_id and backhalf_alias"""
     result = self.session.execute(
-      self.delete_single_url,
-      (user_id, backhalf_alias)
+      self.delete_single_url_prepared,
+      (user_id, backhalf_alias,)
     )
     return result
       

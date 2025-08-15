@@ -56,8 +56,17 @@ class UrlPasswordRequest(BaseModel):
   password: str
 
 class UpdateUrlRequest(BaseModel):
-  title: str
-  password: Optional[str]
-  confirm_password: Optional[str]
-  is_active: bool
+
+  """
+  Operations:
+  - Change the title
+  - Change the password
+  - Remove Password
+  - Activate and deactivate the url
+  """
+  title: Optional[str] = None    # new title, or none meaning no change
+  password: Optional[str] = None # new password, or None means no change
+  confirm_password: Optional[str] = None
+  is_remove_password: bool = False # explicitly remove password protection on link
+  is_active: Optional[bool] = None # new active state, or none meaning no change
   
