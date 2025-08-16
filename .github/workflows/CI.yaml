@@ -26,22 +26,26 @@ jobs:
       - name: Install Astral UV
         run: pip install uv
       
-      # Step 4: Install depndencies via Astral UV
+      # Step 4: Install dependencies via Astral UV
       # NOTE: The uv.lock file is needed to be in the repository for this to work.
       - name: Install Dependencies
+        working-directory: backend
         run: uv sync
 
-      # Step 5: Run ruff as a linter. It'll check for style issues and potential errors
+      # Step 5: Run ruff as a linter. It'll check for style issues and potential errors without making any changes to code of course.
       - name: Run ruff linter
+        working-directory: backend
         run: uv run ruff check . 
 
       # Step 6: Run ruff's formatter in check mode. This ensures all code is properly formatted without 
       # making any changes to the files.
       - name: Run Ruff formatter 
+        working-directory: backend
         run: uv run ruff format --check .
 
       # Step 7: Run tests with pytest
       - name: Run tests with pytest
+        working-directory: backend
         run: uv run pytest
 
       # Step 8: sBuild the docker iamge
