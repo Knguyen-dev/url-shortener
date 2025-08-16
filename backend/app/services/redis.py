@@ -33,9 +33,6 @@ async def init_redis():
   # This should never be reached, but just in case
   raise RuntimeError("Redis connection failed: Maximum retries exceeded")
 
-
-
-
 # -----------------------------------------
 # Helper functions for urls
 # -----------------------------------------
@@ -50,26 +47,27 @@ Typical redis pattern for URLS
   this kind of stuff.
 '''
 
-def cache_delete_url_click(backhalf_alias):
-  """Deletes a key-value pair"""
+async def cache_delete_url_click(backhalf_alias):
+  """Deletes a key-value pair. Returns 1 if the key existed and was deleted, and 0 otherwise"""
   cache_key = f"url_click:{backhalf_alias}"
-  return redis_client.delete(cache_key)
+  return await redis_client.delete(cache_key)
 
-def cache_increment_url_click(backhalf_alias):
-  """Increments the click count in redis for a given key"""
+async def cache_increment_url_click(backhalf_alias):
+  """Increments the click count in redis for a given key. Returns the new count.
+  """
   cache_key = f"url_click:{backhalf_alias}"
 
   # Automatically handles both cases:
   # - If field exists: increment by 1
   # - If field doesn't exist :creates it and set to 1
   # Note: Stores 
-  return redis_client.incr(cache_key)  
+  return await redis_client.incr(cache_key)  
 
-def cache_get_url_click(backhalf_alias):
+async def cache_get_url_click(backhalf_alias):
   """Gets the url click count in Redis for a given url"""
   cache_key = f"url_click:{backhalf_alias}"
-  result = redis_client.get(cache_key)
-  return result if result else 0
+  result = await redis_client.get(cache_key)
+  return int(result) if result else 0
   
 # -----------------------------------------
 # Helper functions for sessions

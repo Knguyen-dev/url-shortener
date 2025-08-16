@@ -31,6 +31,7 @@ class Settings(BaseSettings):
   
   # Redis Credentials; 
   REDIS_URL: str = get_env_with_logging("REDIS_URL", "")
+  CLICK_THRESHOLD: int = 5 # If greater than or equal to the threshold, we'll flush the clicks
   
   ENVIRONMENT: str = get_env_with_logging("ENVIRONMENT", "DEVELOPMENT")
   IS_PRODUCTION: bool = ENVIRONMENT == "PRODUCTION"

@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 from app.services.redis import cache_increment_url_click, cache_get_url_click, cache_delete_url_click
 from app.services.auth_utils import require_auth, hash_url_password, verify_url_password
 from app.types import UrlPasswordRequest, UpdateUrlRequest
+from app.config import settings
 from app.services.backhalf_alias import AliasGenerator, get_alias_generator
 from app.repositories.CassandraUrlRepo import get_cassandra_url_repo, CassandraUrlRepo
 from app.repositories.CassandraClickRepo import get_cassandra_click_repo, CassandraClickRepo
@@ -22,11 +23,17 @@ async def redirect_url(
    cassandra_click_repo: CassandraClickRepo = Depends(get_cassandra_click_repo)):
   """Handle redirecting the short urls we generate to the original urls"""
   existing_url = fetch_url_and_availability(backhalf_alias, cassandra_url_repo)
-  if existing_url["password_hash"]:
-    return { "password_required": True }  
-  update_clicks_and_redirect(backhalf_alias, existing_url['original_url'], cassandra_click_repo)
 
-@url_router.post("/verify-password/{backhalf_alias}")
+  if existing_url["password_hash"]:
+    raise HTTPException(
+      status_code=status.HTTP_401_UNAUTHORIZED,
+      # Lets the client know to prompt the user for a password and use the verify-
+      detail={ "password_required": True } 
+    )
+  
+  return await update_clicks_and_redirect(backhalf_alias, existing_url['original_url'], cassandra_click_repo)
+
+@url_router.post("/api/urls/verify-password/{backhalf_alias}")
 async def url_verify_password(
    backhalf_alias: str, 
    password_request: UrlPasswordRequest, 
@@ -41,14 +48,14 @@ async def url_verify_password(
        status_code=status.HTTP_400_BAD_REQUEST,
        detail="URL isn't password protected. Please use the redirect endpoint!"
     )
-   
+  
   if not verify_url_password(password_request.password, stored_hash):
     raise HTTPException(
        status_code=status.HTTP_401_UNAUTHORIZED,
        detail="Incorrect password"
     )
   
-  update_clicks_and_redirect(backhalf_alias, existing_url['original_url'], cassandra_click_repo)
+  return await update_clicks_and_redirect(backhalf_alias, existing_url['original_url'], cassandra_click_repo)
   
 @url_router.get("/api/urls/{backhalf_alias}")
 async def get_url(
@@ -347,24 +354,20 @@ def fetch_url_and_availability(backhalf_alias: str, cassandra_url_repo: Cassandr
      )
   return existing_url
 
-def update_clicks_and_redirect(backhalf_alias: str, original_url, cassandra_click_repo: CassandraClickRepo):
-  """Updates the click count and redirects the client for an existing url
+async def update_clicks_and_redirect(backhalf_alias: str, original_url, cassandra_click_repo: CassandraClickRepo):
+  """Updates the click count and returns a redirect object.
   
   Args:
       backhalf_alias (str): Assumed to be associated with an existing URL.
       original_url (str): The url that we're redirecting to.
 
-  Note: Please ensure that backhalf_alias is associated with an existing URL.
+  Note: 
+    - Please ensure that backhalf_alias is associated with an existing URL. 
   """
-  
-  click_count = cache_get_url_click(backhalf_alias)
-  if click_count >= 5:
-    cache_delete_url_click(backhalf_alias)
+  click_count = await cache_increment_url_click(backhalf_alias)
+  if click_count >= settings.CLICK_THRESHOLD:
+    await cache_delete_url_click(backhalf_alias)
     cassandra_click_repo.update_url_clicks(backhalf_alias, click_count)
-    app_logger.info(f"Flushing {click_count} url clicks from Redis to database.")
-  else: 
-    # Else it isn't above the threshold so increase the click in redis.s
-    cache_increment_url_click(backhalf_alias)
 
   return RedirectResponse(
      url=original_url,
