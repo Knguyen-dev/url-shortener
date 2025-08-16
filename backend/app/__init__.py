@@ -1,13 +1,12 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse 
+from fastapi.responses import JSONResponse
 from .services.postgres import init_postgres, cleanup_postgres
 from .services.cassandra import init_cassandra, shutdown_cassandra
 from .services.redis import init_redis
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi import FastAPI
 
-# Import the routes 
+# Import the routes
 from .routes.auth_router import auth_router
 from .routes.user_router import user_router
 from .routes.url_router import url_router
@@ -18,19 +17,20 @@ docs_description = """
 Here you can find information on the available endpoints and how to use them. 
 """
 
+
 @asynccontextmanager
 async def startup_event(app: FastAPI):
-
   # Start up
   await init_redis()
   await init_postgres()
   await init_cassandra()
-  
-  yield 
+
+  yield
 
   # # Shutdown
-  await cleanup_postgres() 
+  await cleanup_postgres()
   shutdown_cassandra()
+
 
 app = FastAPI(
   lifespan=startup_event,
@@ -49,6 +49,7 @@ app.add_middleware(
   allow_headers=["*"],
 )
 
+
 @app.exception_handler(HTTPException)
 async def custom_http_exception_handler(request: Request, exc: HTTPException):
   """Middleware that uniformalizes how errors are sent back to the frontend."""
@@ -64,4 +65,4 @@ app.include_router(user_router, tags=["users"])
 app.include_router(url_router, tags=["urls"])
 
 
-# Not found 
+# Not found

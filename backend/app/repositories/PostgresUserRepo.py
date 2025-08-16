@@ -1,14 +1,12 @@
-import asyncpg 
+import asyncpg
 from app.services.postgres import get_postgres_pool
+
 
 class PostgresUserRepo:
   # Uses asyncpg, so I guess each method should accept a db_conn: Connection
   # or just call connect_db internally to get things done.
   def __init__(self, pool: asyncpg.Pool):
     self.pool = pool
-
-  # TODO: Verify that these work as well
-  # Should verify that all of the repository classes are working as expected honestly.
 
   async def get_all_users(self):
     async with self.pool.acquire() as conn:
@@ -19,35 +17,36 @@ class PostgresUserRepo:
       result = await conn.fetchrow("SELECT * FROM users WHERE email = $1", email)
       return result
 
-  async def create_user(self, email: str, full_name, password_hash: str, is_admin: bool = False):
+  async def create_user(
+    self, email: str, full_name, password_hash: str, is_admin: bool = False
+  ):
     async with self.pool.acquire() as conn:
       return await conn.execute(
         """INSERT INTO users (email, full_name, is_admin, password_hash) VALUES ($1, $2, $3, $4)""",
         email,
         full_name,
         is_admin,
-        password_hash
+        password_hash,
       )
 
   async def update_is_admin_by_id(self, is_admin: bool, user_id: int):
     async with self.pool.acquire() as conn:
       result = await conn.execute(
-        "UPDATE users SET is_admin = $1 WHERE id = $2",
-        is_admin,
-        user_id
+        "UPDATE users SET is_admin = $1 WHERE id = $2", is_admin, user_id
       )
       updated_count = int(result.split()[-1])  # Extracts the number from 'UPDATE 1'
       return updated_count
 
   async def get_user_by_id(self, user_id: int):
     async with self.pool.acquire() as conn:
-      return await conn.fetchrow("SELECT * FROM users WHERE id = $1", user_id) 
-  
+      return await conn.fetchrow("SELECT * FROM users WHERE id = $1", user_id)
+
   async def delete_user_by_id(self, user_id: int) -> int:
     async with self.pool.acquire() as conn:
       result = await conn.execute("DELETE FROM users WHERE id = $1", user_id)
       deletion_count = int(result.split()[-1])  # Extracts the number from 'DELETE 1'
       return deletion_count
+
 
 def get_user_repo() -> PostgresUserRepo:
   pool = get_postgres_pool()

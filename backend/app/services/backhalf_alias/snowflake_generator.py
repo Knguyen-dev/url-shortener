@@ -1,14 +1,12 @@
-import threading, time
-
-
-
+import threading
+import time
 
 
 class SnowflakeGenerator:
   def __init__(self, worker_id: int = 0, epoch: int = 1288834974657):
     """
     Generates Twitter-style Snowflake IDs
-    
+
     64-bit structure:
     - 1 bit: unused (always 0)
     - 41 bits: timestamp (milliseconds since custom epoch)
@@ -16,7 +14,7 @@ class SnowflakeGenerator:
     - 12 bits: sequence number
 
     Note:
-    For personal projects, threadsafe custom code is fine. But for production and distributed systems 
+    For personal projects, threadsafe custom code is fine. But for production and distributed systems
     you'd need to get other details right (clock drift, worker-id assignment, cross-process safety)
     So sometimes you'll prefer a battle-tested library or something more simple
 
@@ -24,28 +22,28 @@ class SnowflakeGenerator:
       It doesn't have to be too complex, imagine worker 1 has ID 'A' and worker 2 has id 'B', etc. Use config,
       orchestration, or some kind of coordination service to make this happen.
     - Clock skew/backwards time: If a system clock goes backwards, you must decide: wait until clock catches up (simple),
-      use logical clock bump, or fail fast. This situation happens when we see a smaller timestamp 
-      than we saw a moment ago. This can happen if someone (e.g. admin) changes the system time backwards, 
-      such as to fix some timezone error, or do something. Or it could be when your OS syncs with an NTP server and 
-      the server finds that your clock is ahead of the real time. Your OS will need to correct course. Or when you're 
+      use logical clock bump, or fail fast. This situation happens when we see a smaller timestamp
+      than we saw a moment ago. This can happen if someone (e.g. admin) changes the system time backwards,
+      such as to fix some timezone error, or do something. Or it could be when your OS syncs with an NTP server and
+      the server finds that your clock is ahead of the real time. Your OS will need to correct course. Or when you're
       working with VMs or containers and you're paused, etc. Teh virtual clock can jump around sometimes.
-    - Multiple processes on the same host: You want to protect threads. Another setup is separate processes needing separate 
+    - Multiple processes on the same host: You want to protect threads. Another setup is separate processes needing separate
       coordination. So either unique worker_id per process or a shared allocator
-    - Sequence Overflow: Your sequence number maximum is typically 2^{12}-1=4095, so 0 to 4095 is what your 12 bits cover. 
-      You're able to generate 4096 snowflake ids per millisecond, but what happens if you hit the maximum? 
+    - Sequence Overflow: Your sequence number maximum is typically 2^{12}-1=4095, so 0 to 4095 is what your 12 bits cover.
+      You're able to generate 4096 snowflake ids per millisecond, but what happens if you hit the maximum?
       Your code needs to wait until the next millisecond
-    - 64-bit safety: Python 'int' is unbounded but systems are expecting a 64-bit unsigned/signed range. 
+    - 64-bit safety: Python 'int' is unbounded but systems are expecting a 64-bit unsigned/signed range.
     """
 
-    '''
+    """
     ##### Constants #####
 
     - max_worker_id: With this, you're going to have a maximum number of workers. This is 
       given by 1 * 2^{self.worker_id_bits} - 1.
     - max_sequence: The maximum sequence number that we can use when creating that id. Again this is 
       given by 1 * 2^{self.sequence_bits} - 1. 
-    '''
-    
+    """
+
     self.worker_id_bits = 10
     self.sequence_bits = 12
 
@@ -54,12 +52,12 @@ class SnowflakeGenerator:
     self.max_sequence = (1 << self.sequence_bits) - 1
 
     if not (0 <= self.worker_id <= self.max_worker_id):
-        raise ValueError(f"worker_id must be 0..{self.max_worker_id}")
+      raise ValueError(f"worker_id must be 0..{self.max_worker_id}")
 
     self.worker_id = worker_id
     self.epoch = epoch  # in milliseconds
 
-    '''
+    """
     ##### Bit shifts #####
     These are positional offsets in our 64-bit layout. Remember that snowflake ids 
     have parts. [timestamp | worker_id | sequence]
@@ -70,11 +68,11 @@ class SnowflakeGenerator:
     amount of times so that it is to the left of the sequence bits. Then the timestamp 
     is the largest field, and the contents of that field need to be to the left of both the sequence
     bits and the worker id bits. When you create your snowflake id, you can more easily shift the content around.
-    '''
+    """
     self.worker_id_shift = self.sequence_bits
     self.timestamp_shift = self.worker_id_bits + self.sequence_bits
 
-    '''
+    """
     ##### Runtime state #####
     We want a threading lock so that only one thread ata time can generate 
     an ID. This is because if somehow we had two threads generating IDs, 
@@ -99,33 +97,35 @@ class SnowflakeGenerator:
 
     sequence: A per millisecond counter t oallow multiple IDs within the same 
     millisecond from the same order.    
-    '''
+    """
     self.lock = threading.Lock()
     self.last_timestamp = -1
     self.sequence = 0
-    
+
   def _current_timestamp(self):
     """Get the current timestamp in milliseconds"""
     return int(time.time() * 1000)
-  
+
   def _wait_next_millisecond(self, last_timestamp):
     """Return the timestamp for the next millisecond"""
     timestamp = self._current_timestamp()
     while timestamp <= last_timestamp:
       timestamp = self._current_timestamp()
     return timestamp
-  
+
   def next_id(self):
-    '''Generates a unique Snowflake ID'''
+    """Generates a unique Snowflake ID"""
     with self.lock:
       timestamp = self._current_timestamp()
 
       # Check for clock moving backwards
       if timestamp < self.last_timestamp:
-        raise Exception(f"Clock moved backwards. Refusing to generate ID for {self.last_timestamp - timestamp} milliseconds")
-       
+        raise Exception(
+          f"Clock moved backwards. Refusing to generate ID for {self.last_timestamp - timestamp} milliseconds"
+        )
+
       if timestamp == self.last_timestamp:
-        '''
+        """
         ## If generating ID within the same millisecond
 
         Increments sequence by 1, and sequence == max_sequence_num, we set self.sequence = 0. We're 
@@ -142,29 +142,28 @@ class SnowflakeGenerator:
             the only time where this happens.
         4. We overflowed and had to reset sequence = 0, so that means we'll wait for next millisecond since we 
         reset our count.
-        '''
+        """
         self.sequence = (self.sequence + 1) & self.max_sequence_num
         if self.sequence == 0:
           timestamp = self._wait_next_millisecond(self.last_timestamp)
       else:
         # Else it's a new millisecond, so reset the sequence number to zero
-        self.sequence_num = 0    
+        self.sequence_num = 0
 
       # Always track when the last snowflake id was generated.
       self.last_timestamp = timestamp
 
-    
-      ''' 
+      """ 
       ## Generate snowflake ID
       Subtract from our epoch which is standard for snowflake ids. It makes sure that the number fits in 41 bits instead of 
       being a huge unix timestamp. We move hte timestamp tothe leftmost section of the snowflake id. We put the worker id just below 
       the timestamp bits. Then the sequence is in the lowest bits, so no shift is needed. The bitwise or thing just merges all of our 
       fields together.
-      '''
+      """
       snowflake_id = (
-          ((timestamp - self.epoch) << self.timestamp_shift) |
-          (self.worker_id << self.worker_id_shift) |
-          self.sequence 
+        ((timestamp - self.epoch) << self.timestamp_shift)
+        | (self.worker_id << self.worker_id_shift)
+        | self.sequence
       )
 
       return snowflake_id

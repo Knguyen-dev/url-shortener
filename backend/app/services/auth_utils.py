@@ -10,14 +10,15 @@ import bcrypt
 from app.repositories.PostgresSessionRepo import get_session_repo
 from app.repositories.PostgresUserRepo import get_user_repo
 
+
 def create_user_info_list(users: List[any]):
   """Creates a filtered user info object that contains info that we can send back to the client"""
   user_info_list = []
   for u in users:
     user_info = {
-      "id": u['id'],
-      "email": u['email'],
-      "is_admin": u['is_admin'],
+      "id": u["id"],
+      "email": u["email"],
+      "is_admin": u["is_admin"],
     }
     user_info_list.append(user_info)
   return user_info_list
@@ -29,11 +30,12 @@ def create_user_info_list(users: List[any]):
 def hash_password(plaintext_password: str) -> str:
   """Hashes a plaintext password"""
   try:
-    password_hasher = PasswordHasher() 
+    password_hasher = PasswordHasher()
     return password_hasher.hash(plaintext_password)
   except Exception as e:
     app_logger.error(f"Failed to hash password: {str(e)}")
     raise
+
 
 def verify_password(plaintext_password: str, password_hash: str) -> bool:
   """Verifies a plaintext password and a password hash"""
@@ -44,13 +46,14 @@ def verify_password(plaintext_password: str, password_hash: str) -> bool:
   except (
     argon2.exceptions.VerifyMismatchError,
     argon2.exceptions.VerificationError,
-    argon2.exceptions.InvalidHashError
+    argon2.exceptions.InvalidHashError,
   ) as e:
     app_logger.debug(f"Password verification failed: {type(e).__name__}")
     return False
   except Exception as e:
     app_logger.error(f"Unexpected error during password verification: {str(e)}")
-    return False  
+    return False
+
 
 def hash_url_password(plaintext_password: str) -> str:
   """Hashes a password to protect a url. Returns the password hash."""
@@ -61,29 +64,26 @@ def hash_url_password(plaintext_password: str) -> str:
     # Note: Handle errors from bcrypt, they don't document errors well.
     app_logger.error(f"Error hashing url password: {str(e)}")
     raise
-      
+
 
 def verify_url_password(plaintext_password: str, password_hash: str) -> bool:
   """Verifies whether a plaintext password matches its supposed hash. Returns true if it does, else false."""
   try:
-    return bcrypt.checkpw(plaintext_password.encode("utf-8"), password_hash.encode("utf-8"))
+    return bcrypt.checkpw(
+      plaintext_password.encode("utf-8"), password_hash.encode("utf-8")
+    )
   except Exception as e:
     # Handle the case where the hash is malformed or not a valid bcrypt hash
     app_logger.error(f"Error verifying url password: {str(e)}")
     return False
 
 
-  
-  
-
-
-
-
 # # --------------------------------------------------
 # Session Create Utilities
 # # --------------------------------------------------
 
-async def create_session(user_id: str) -> str:  
+
+async def create_session(user_id: str) -> str:
   """Creates a session for a user in the database and returns the session token
 
   Args:
@@ -102,6 +102,7 @@ async def create_session(user_id: str) -> str:
     app_logger.error(f"Failed to create session for user {user_id}: {str(e)}")
     raise
 
+
 def set_session_cookie(response: Response, session_token: str):
   """Sets the session cookie in the response"""
   try:
@@ -113,17 +114,18 @@ def set_session_cookie(response: Response, session_token: str):
       secure=settings.COOKIE_SECURE,
       samesite="lax",
       domain=None,
-      path="/"
+      path="/",
     )
 
     # Ensure cookie is not cached by the browser; another layer of security against local access
     # As a result, cookies are destroyed after the browser is closed.
-    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, private'
-    response.headers['Pragma'] = 'no-cache'
-    response.headers['Expires'] = '0'
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, private"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
   except Exception as e:
     app_logger.error(f"Failed to set session cookie: {str(e)}")
     raise
+
 
 # # --------------------------------------------------
 # Session Management Primitive Utilities
@@ -135,23 +137,26 @@ def check_session_expiration(session: Dict[any, any]) -> Tuple[bool, str]:
         Tuple[bool, str]: (is_expired, reason)
   """
   current_time = datetime.now(timezone.utc)
-  
-  expires_at = session["created_at"] + settings.SESSION_ABSOLUTE_LIFETIME 
+
+  expires_at = session["created_at"] + settings.SESSION_ABSOLUTE_LIFETIME
 
   # If absolute timeout
-  # NOTE: You'll probably never see this log in production since the cookie should 
-  # delete at the time the session hits the absolute timeout. Unless someone tries to copy the 
+  # NOTE: You'll probably never see this log in production since the cookie should
+  # delete at the time the session hits the absolute timeout. Unless someone tries to copy the
   # cookie ID and reconstruct it, but even then, they'll hit this error.
   if current_time > expires_at:
     return True, "absolute"
-  
+
   # if idle timeout; If elapsed time exceeds our idle timeout
   if current_time - session["last_active_at"] > settings.SESSION_IDLE_LIFETIME:
     return True, "idle"
 
   return False, "valid"
 
-async def validate_session(session_token: str, response: Response) -> Optional[Dict[any, any]]:
+
+async def validate_session(
+  session_token: str, response: Response
+) -> Optional[Dict[any, any]]:
   """Validates session and returns session data if valid. Handles database and cookie cleanup for invalid sessions.
 
   Args:
@@ -161,16 +166,16 @@ async def validate_session(session_token: str, response: Response) -> Optional[D
   Returns:
       Optional[Dict[any, any]]: Session object
   """
-  
+
   try:
     postgres_session_repo = get_session_repo()
     session = await postgres_session_repo.get_session_by_token(session_token)
-    
-    # If session token wasn't associated with any session, delete the invalid cookie 
+
+    # If session token wasn't associated with any session, delete the invalid cookie
     # that got us here.
     if session is None:
       response.delete_cookie(settings.SESSION_COOKIE_NAME)
-      return None  
+      return None
 
     # If we found an expired session:
     # - Delete cookie associated with session
@@ -183,11 +188,12 @@ async def validate_session(session_token: str, response: Response) -> Optional[D
       response.delete_cookie(settings.SESSION_COOKIE_NAME)
       await postgres_session_repo.delete_session_by_token(session_token)
       return None
-    
+
     return session
   except Exception as e:
     app_logger.error(f"Error during session validation: {str(e)}")
     return None
+
 
 # # --------------------------------------------------
 # Authentication Middleware
@@ -205,9 +211,9 @@ async def authenticate_request(request: Request, response: Response) -> None:
     app_logger.warning("Authentication failed: No session token provided!")
     raise HTTPException(
       status_code=status.HTTP_401_UNAUTHORIZED,
-      detail="Authentication failed: No session token provided"
+      detail="Authentication failed: No session token provided",
     )
-  
+
   # Check to see if we have a valid session for that session token
   session = await validate_session(session_token, response)
 
@@ -215,13 +221,13 @@ async def authenticate_request(request: Request, response: Response) -> None:
   if session is None:
     app_logger.warning("Authentication failed: Invalid or expired session!")
     raise HTTPException(
-      status_code=status.HTTP_401_UNAUTHORIZED,
-      detail="Invalid or expired session"
+      status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired session"
     )
-  
+
   user_id = session["user_id"]
   return user_id
-  
+
+
 # # --------------------------------------------------
 # Dependency Injection for protected routes
 # # --------------------------------------------------
@@ -233,14 +239,14 @@ async def require_auth(request: Request, response: Response) -> int:
     # At this point we have an authenticated request (valid). Update the last_time_active to now!
     current_time = current_time = datetime.now(timezone.utc)
     postgres_session_repo = get_session_repo()
-    await postgres_session_repo.update_session_last_active_by_user_id(current_time, user_id)
+    await postgres_session_repo.update_session_last_active_by_user_id(
+      current_time, user_id
+    )
   except Exception as e:
     # Don't really want to fail the request for this.
     app_logger.error(f"Failed to update last_active for user {user_id}: {str(e)}")
-    
+
   return user_id
-
-
 
 
 async def require_admin(request: Request, response: Response) -> int:
@@ -253,18 +259,19 @@ async def require_admin(request: Request, response: Response) -> int:
       app_logger.warning(f"User {user_id} does not have admin privileges!")
       raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Admin privileges are needed to access this resource."
+        detail="Admin privileges are needed to access this resource.",
       )
     return user_id
   except HTTPException:
-    raise # Re-raise HTTPException, which is auto-logged
+    raise  # Re-raise HTTPException, which is auto-logged
   except Exception as e:
     app_logger.error(f"Error checking admin status for user {user_id}: {str(e)}")
     raise HTTPException(
       status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-      detail="Error verifying admin privileges"
+      detail="Error verifying admin privileges",
     )
-  
+
+
 async def optional_auth(request: Request, response: Response) -> str:
   """Dependency for optional authentication, returns user_id or None."""
   try:
@@ -274,6 +281,7 @@ async def optional_auth(request: Request, response: Response) -> str:
     # Stops propagating HTTP errors from require_auth -> authenticate_request
     # This lets the authentication actually be optional
     return None
+
 
 # Usage in routes:
 # @app.get("/protected")

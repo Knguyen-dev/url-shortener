@@ -31,14 +31,23 @@ logs:
 logs-all:
 	@docker compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) logs -f
 
-
 # For execing into the container
 shell:
 	@docker exec -it $(shell docker ps -q -f "name=$(PROJECT_NAME)-web") /bin/sh
 
 psql:
-	@docker exec -it url-shortener-postgres-1 psql -U dev -d postgres
+	@docker exec -it $(PROJECT_NAME)-postgres-1 psql -U dev -d postgres
 
+# Lints and fixes common linting errors
+# Note: Remove --fix flag if you just want to see the errors. 
+lint:
+	# Checks for and fixes simple linting errors
+	@cd backend && uv run ruff check --fix .
+
+# Formats code files
+# Note: Use the --check flag to see what files are fixed.
+format:
+	@cd backend && uv run ruff format .
 
 # ===============================
 # Cassandra Helper Commands
@@ -70,7 +79,7 @@ psql:
 #       EXIT;
 # ===============================
 cql: 	
-	@docker exec -it url-shortener-cassandra-1 cqlsh -k urlshortener
+	@docker exec -it $(PROJECT_NAME)-cassandra-1 cqlsh -k urlshortener
 	
 redis:
 	@docker exec -it $(PROJECT_NAME)-redis-1 redis-cli
