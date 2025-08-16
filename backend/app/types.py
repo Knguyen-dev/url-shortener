@@ -1,4 +1,4 @@
-from typing import Self
+from typing import Optional
 from pydantic import BaseModel, EmailStr, Field, model_validator
 
 
@@ -6,7 +6,7 @@ from pydantic import BaseModel, EmailStr, Field, model_validator
 # Auth router models
 # # ---------------------------------
 class SignupRequest(BaseModel):
-  # TODO: Real app would have length constraints and probably your own email validation regex 
+  # TODO: Real app would have length constraints and probably your own email validation regex
   # to have explainability for frontend and backend.
   email: EmailStr
   full_name: str = Field(title="Full name of the user", min_length=1, max_length=32)
@@ -15,27 +15,26 @@ class SignupRequest(BaseModel):
   password: str = Field(title="Password of the user", min_length=8, max_length=32)
   confirm_password: str
 
-  # TODO: This works but the error handling isn't uniformalized. Shuold use 
+  # TODO: This works but the error handling isn't uniformalized. Shuold use
   # native way of doing this. I suggest just creating a validate() function
-  # and setting it up so that you call .validate() during the route handler 
-  # and this validate function should handle raising all errors. For now it doesn't 
+  # and setting it up so that you call .validate() during the route handler
+  # and this validate function should handle raising all errors. For now it doesn't
   # really matter, but in a real app you'd want full control
 
-  # NOTE: Use model validator to compare multiple fields whilst regular 
+  # NOTE: Use model validator to compare multiple fields whilst regular
   # field_validator can't cross-reference.
   # https://docs.pydantic.dev/latest/concepts/validators/#using-the-decorator-pattern
   @model_validator(mode="after")
-  def check_passwords_match(self) -> Self:
+  def check_passwords_match(self):
     if self.password != self.confirm_password:
       raise ValueError("Passwords do not match!")
     return self
-  
-
 
 
 class LoginRequest(BaseModel):
   email: EmailStr
   password: str = Field(min_length=1)
+
 
 # #----------------------------------
 # Url router models
@@ -43,9 +42,33 @@ class LoginRequest(BaseModel):
 class CreateUrlRequest(BaseModel):
   # TODO: Should probably have server side input validation here
   original_url: str = Field(min_length=1)
-  password: str
-  confirm_password: str
+  password: Optional[str] = None
+  confirm_password: Optional[str] = None
   is_active: bool
-  title: str
-  
+  title: str = Field(min_length=1)
 
+  @model_validator(mode="after")
+  def check_passwords_match(self):
+    if self.password != self.confirm_password:
+      raise ValueError("Passwords do not match!")
+    return self
+
+
+class UrlPasswordRequest(BaseModel):
+  password: str
+
+
+class UpdateUrlRequest(BaseModel):
+  """
+  Operations:
+  - Change the title
+  - Change the password
+  - Remove Password
+  - Activate and deactivate the url
+  """
+
+  title: Optional[str] = None  # new title, or none meaning no change
+  password: Optional[str] = None  # new password, or None means no change
+  confirm_password: Optional[str] = None
+  is_remove_password: bool = False  # explicitly remove password protection on link
+  is_active: Optional[bool] = None  # new active state, or none meaning no change
