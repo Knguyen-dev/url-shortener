@@ -21,11 +21,11 @@ def get_env_with_logging(key: str, default: str = None) -> str:
 
 class Settings(BaseSettings):
   # Postgres Credentials
-  POSTGRES_HOST: str = get_env_with_logging("POSTGRES_HOST", "")
-  POSTGRES_PORT: int = get_env_with_logging("POSTGRES_PORT", "")
-  POSTGRES_DB: str = get_env_with_logging("POSTGRES_DB", "")
-  POSTGRES_USER: str = get_env_with_logging("POSTGRES_USER", "")
-  POSTGRES_PASSWORD: str = get_env_with_logging("POSTGRES_PASSWORD", "")
+  POSTGRES_HOST: str = get_env_with_logging("POSTGRES_HOST", "postgres")
+  POSTGRES_PORT: int = get_env_with_logging("POSTGRES_PORT", "5432")
+  POSTGRES_DB: str = get_env_with_logging("POSTGRES_DB", "postgres")
+  POSTGRES_USER: str = get_env_with_logging("POSTGRES_USER", "dev")
+  POSTGRES_PASSWORD: str = get_env_with_logging("POSTGRES_PASSWORD", "devpass")
   POSTGRES_URL: str = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
 
   # Cassandra Credentials
@@ -34,7 +34,7 @@ class Settings(BaseSettings):
   CASSANDRA_KEYSPACE: str = get_env_with_logging("CASSANDRA_KEYSPACE", "urlshortener")
 
   # Redis Credentials;
-  REDIS_URL: str = get_env_with_logging("REDIS_URL", "")
+  REDIS_URL: str = get_env_with_logging("REDIS_URL", "redis://redis:6379/0")
   CLICK_THRESHOLD: int = (
     5  # If greater than or equal to the threshold, we'll flush the clicks
   )

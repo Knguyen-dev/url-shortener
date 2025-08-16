@@ -1,4 +1,4 @@
-from typing import Optional, Self
+from typing import Optional
 from pydantic import BaseModel, EmailStr, Field, model_validator
 
 
@@ -25,7 +25,7 @@ class SignupRequest(BaseModel):
   # field_validator can't cross-reference.
   # https://docs.pydantic.dev/latest/concepts/validators/#using-the-decorator-pattern
   @model_validator(mode="after")
-  def check_passwords_match(self) -> Self:
+  def check_passwords_match(self):
     if self.password != self.confirm_password:
       raise ValueError("Passwords do not match!")
     return self
@@ -42,13 +42,13 @@ class LoginRequest(BaseModel):
 class CreateUrlRequest(BaseModel):
   # TODO: Should probably have server side input validation here
   original_url: str = Field(min_length=1)
-  password: Optional[str]
-  confirm_password: Optional[str]
+  password: Optional[str] = None
+  confirm_password: Optional[str] = None
   is_active: bool
   title: str = Field(min_length=1)
 
   @model_validator(mode="after")
-  def check_passwords_match(self) -> Self:
+  def check_passwords_match(self):
     if self.password != self.confirm_password:
       raise ValueError("Passwords do not match!")
     return self

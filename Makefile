@@ -49,6 +49,9 @@ lint:
 format:
 	@cd backend && uv run ruff format .
 
+test:
+	@cd backend && uv run pytest
+
 # ===============================
 # Cassandra Helper Commands
 # ===============================

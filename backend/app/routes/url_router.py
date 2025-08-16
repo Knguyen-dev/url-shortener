@@ -270,7 +270,6 @@ async def create_url(
 
   password_hash = None
   if create_url_request.password:
-    app_logger.info("Generating URL password hash!")
     password_hash = hash_url_password(create_url_request.password)
 
   try:

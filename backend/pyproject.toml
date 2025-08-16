@@ -3,7 +3,7 @@ name = "backend"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.10.12"
 dependencies = [
     "fastapi>=0.115.8",                # API Framework in Python
     "uvicorn[standard]>=0.34.0",       # Webserver for FastAPI
@@ -12,10 +12,10 @@ dependencies = [
     "argon2-cffi>=25.1.0",        # Password hashing for user accounts
     "bcrypt>=4.3.0",              # Password hashing for urls (less stringent)
     "cryptography>=42.0.5",       # Cryptography for sessions
-    "requests>=2.32.3",                # Requests, e.g. OIDC requests 
+    "requests>=2.32.3",                # Requests, e.g. OIDC requests or something else
     "python-dotenv>=1.0.1",       # Allows for loading environment variables.
     "cassandra-driver",                # Python Cassandra driver
-    "redis==6.2.0",                    # Redis client, allows us to connect to redis instance
+    "redis>=6.2.0",                    # Redis client, allows us to connect to redis instance
     "aiosmtplib>=2.0.2",          # Async SMTP Client
     "email-validator>=2.1.1",     # Validates email fields
 
@@ -44,3 +44,8 @@ indent-width = 2
 quote-style="double"
 indent-style="space"
 line-ending="lf"
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+testpaths = "app/tests"
+addopts = "--tb=short"
