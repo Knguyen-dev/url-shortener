@@ -8,9 +8,8 @@ on:
 
 jobs:
   cd:
-    # This job will only run if the 'ci' job (from ci.yml ci) has passed.
-    # NOTE: It looks for a job with a unique identifier ci
-    needs: ci
+    # This job will only run if the 'ci' job (from CI.yml ci) has passed.
+    # The format is <job_name>:<workflow_name>
     runs-on: ubuntu-latest
     permissions:
       # Need write permissions to push to GHCR
@@ -50,11 +49,3 @@ jobs:
           push: true
           tags: ${{ steps.meta.output.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-
-
-
-
-      
-        
-
-    

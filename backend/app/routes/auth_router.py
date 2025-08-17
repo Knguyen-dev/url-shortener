@@ -8,7 +8,7 @@ from app.services.auth_utils import (
   verify_password,
   create_user_info_list,
 )
-from app.services.redis import cache_get_session, cache_set_session, cache_delete_session
+from app.services.redis import cache_delete_session
 
 from app.repositories.PostgresUserRepo import PostgresUserRepo, get_user_repo
 from app.repositories.PostgresSessionRepo import PostgresSessionRepo, get_session_repo
@@ -110,7 +110,7 @@ async def logout(
   if not session_token:
     app_logger.info("No session cookie detected, no further action")
     return status.HTTP_204_NO_CONTENT
-  
+
   response.delete_cookie(settings.SESSION_COOKIE_NAME)
   await postgres_session_repo.delete_session_by_token(session_token)
   await cache_delete_session(session_token)

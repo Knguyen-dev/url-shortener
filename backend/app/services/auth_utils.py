@@ -1,4 +1,3 @@
-import json
 from typing import Dict, List, Optional, Tuple
 from datetime import datetime, timezone
 import argon2
@@ -11,6 +10,7 @@ import bcrypt
 from app.repositories.PostgresSessionRepo import get_session_repo
 from app.repositories.PostgresUserRepo import get_user_repo
 from .redis import cache_update_session, cache_get_session, cache_set_session
+
 
 def create_user_info_list(users: List[any]):
   """Creates a filtered user info object that contains info that we can send back to the client"""
@@ -95,7 +95,7 @@ async def create_session(user_id: str) -> str:
   """
 
   # Default value for session's created_at and last_active_at fields
-  current_time_dt = datetime.now(timezone.utc) 
+  current_time_dt = datetime.now(timezone.utc)
   current_time_str = current_time_dt.isoformat()
 
   # Remember we don't store expires_at directly so this doesn't involve asyncpg.
@@ -106,9 +106,11 @@ async def create_session(user_id: str) -> str:
     # Generate a cryptographically secure session token (32 bytes)
     session_token = secrets.token_urlsafe(32)
     postgres_session_repo = get_session_repo()
-    await postgres_session_repo.create_session(user_id, session_token, current_time_dt, current_time_dt)
+    await postgres_session_repo.create_session(
+      user_id, session_token, current_time_dt, current_time_dt
+    )
 
-    '''
+    """
     asyncpg handles the timestamp conversion from datetime to timestamp/string. To set the 
     session object in redis, you could do another query to get the session object from postgres, but 
     it seems more efficient to just reconstruct the session object here in-memory since we already 
@@ -116,12 +118,12 @@ async def create_session(user_id: str) -> str:
 
     NOTE: If you're changing the schema of the session in Postgres, make sure 
     you change it here as well.
-    '''
+    """
     session_obj = {
       "user_id": user_id,
       "session_token": session_token,
       "last_active_at": current_time_str,
-      "created_at": current_time_str
+      "created_at": current_time_str,
     }
 
     await cache_set_session(session_obj, expires_at_dt)
@@ -256,9 +258,8 @@ async def authenticate_request(request: Request, response: Response) -> None:
     raise HTTPException(
       status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired session"
     )
-  
-  
-  # NOTE: From Redis, it'll be a dictionary, but from Postgres, it'll be an asyncpg Record object. However 
+
+  # NOTE: From Redis, it'll be a dictionary, but from Postgres, it'll be an asyncpg Record object. However
   # both are able to be accessed like dictionaries.
   request.state.session = session
 
@@ -269,7 +270,7 @@ async def authenticate_request(request: Request, response: Response) -> None:
 async def require_auth(request: Request, response: Response) -> int:
   """Dependency that ensures user is authenticated and returns user id"""
   await authenticate_request(request, response)
-  
+
   user_id = int(request.state.session["user_id"])
   session_token = request.state.session["session_token"]
 

@@ -7,7 +7,13 @@ class PostgresSessionRepo:
   def __init__(self, pool: asyncpg.Pool):
     self.pool = pool
 
-  async def create_session(self, user_id: int, session_token: str, created_at: datetime, last_active_at: datetime):
+  async def create_session(
+    self,
+    user_id: int,
+    session_token: str,
+    created_at: datetime,
+    last_active_at: datetime,
+  ):
     """Creates a session in the database"""
     async with self.pool.acquire() as conn:
       return await conn.execute(
@@ -15,7 +21,7 @@ class PostgresSessionRepo:
         user_id,
         session_token,
         created_at,
-        last_active_at
+        last_active_at,
       )
 
   async def update_session_last_active_by_user_id(

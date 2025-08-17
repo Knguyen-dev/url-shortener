@@ -12,8 +12,9 @@ redis_client: redis.Redis = redis.Redis(
   port=settings.REDIS_PORT,
   db=settings.REDIS_DB,
   decode_responses=True,
-  encoding="utf-8"
+  encoding="utf-8",
 )
+
 
 async def init_redis():
   max_retries = 3
@@ -51,11 +52,13 @@ async def init_redis():
   # This should never be reached, but just in case
   raise RuntimeError("Redis connection failed: Maximum retries exceeded")
 
+
 # -----------------------------------------
 # Helper functions for urls
 # -----------------------------------------
 def create_url_click_cache_key(backhalf_alias: str):
   return f"url_click:{backhalf_alias}"
+
 
 async def cache_delete_url_click(backhalf_alias):
   """Deletes a key-value pair. Returns 1 if the key existed and was deleted, and 0 otherwise"""
@@ -80,22 +83,25 @@ async def cache_get_url_click(backhalf_alias):
   result = await redis_client.get(cache_key)
   return int(result) if result else 0
 
+
 # -----------------------------------------
 # Helper functions for sessions
 # -----------------------------------------
 def create_session_cache_key(session_token: str) -> str:
   return f"session:{session_token}"
 
+
 async def cache_update_session(session_token: str, last_active_at: datetime):
   """Updates a session's last_active_at field in the cache
-  
-  Note: last_active_at is for idle timeouts, not absolute, so 
+
+  Note: last_active_at is for idle timeouts, not absolute, so
   you're not going to mess with the TTL on this one. Just update the field.
   Need to convert to ISO 8601 string before storing.
   """
   cache_key = create_session_cache_key(session_token)
   last_active_at_str = last_active_at.isoformat()
   await redis_client.hset(cache_key, "last_active_at", last_active_at_str)
+
 
 async def cache_set_session(session_obj, expires_at_dt: datetime):
   """Stores a session object in the cache"""
@@ -106,7 +112,7 @@ async def cache_set_session(session_obj, expires_at_dt: datetime):
   expires_at_ts = int(expires_at_dt.replace(tzinfo=timezone.utc).timestamp())
   now_ts = int(time.time())
 
-  # Calculate remaining seconds left. If it's expired, the expression is negative, 
+  # Calculate remaining seconds left. If it's expired, the expression is negative,
   # however we do max() function to ensure it's never negative.
   ttl = max(expires_at_ts - now_ts, 0)
   await redis_client.hset(cache_key, mapping=session_obj)
@@ -118,10 +124,12 @@ async def cache_get_session(session_token: str):
   cache_key = create_session_cache_key(session_token)
   return await redis_client.hgetall(cache_key)
 
+
 async def cache_delete_session(session_token: str):
   """Deletes a session in the cache by its session id"""
   cache_key = create_session_cache_key(session_token)
   return await redis_client.delete(cache_key)
+
 
 """
 Typical redis pattern for URLS
