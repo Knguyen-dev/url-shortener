@@ -90,11 +90,11 @@ async def get_url(
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Url not found")
   if existing_url["user_id"] != user_id:
     app_logger.warning(
-      f"User ID '{user_id}' unauthorized to delete url from userID '{existing_url['user_id']}'"
+      f"User ID '{user_id}' unauthorized to get url info from userID '{existing_url['user_id']}'"
     )
     raise HTTPException(
       status_code=status.HTTP_401_UNAUTHORIZED,
-      detail="Not authorized to delete this url",
+      detail="Not authorized to get info for this url",
     )
   url_by_user = cassandra_url_by_user_repo.get_single_url(user_id, backhalf_alias)
   total_clicks = cassandra_click_repo.get_total_clicks(backhalf_alias)
@@ -132,6 +132,9 @@ async def delete_url(
     app_logger.info("Deleted url in secondary table")
     cassandra_click_repo.delete_clicks(backhalf_alias)
     app_logger.info("Deleted url in clicks table")
+
+    await cache_delete_url_click(backhalf_alias)
+
     return {"message": f"Url with backhalf alias {backhalf_alias} was deleted!"}
   except HTTPException as e:
     raise e

@@ -73,8 +73,13 @@ async def cache_increment_url_click(backhalf_alias):
   # Automatically handles both cases:
   # - If field exists: increment by 1
   # - If field doesn't exist :creates it and set to 1
-  # Note: Stores
-  return await redis_client.incr(cache_key)
+  count = await redis_client.incr(cache_key)
+
+  # Set TTL only on first increment (when count == 1)
+  if count == 1:
+    await redis_client.expire(cache_key, 86400)  # TTL of 24 hours, short term tracking
+
+  return count
 
 
 async def cache_get_url_click(backhalf_alias):
