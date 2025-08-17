@@ -8,6 +8,8 @@ from app.services.auth_utils import (
   verify_password,
   create_user_info_list,
 )
+from app.services.redis import cache_get_session, cache_set_session, cache_delete_session
+
 from app.repositories.PostgresUserRepo import PostgresUserRepo, get_user_repo
 from app.repositories.PostgresSessionRepo import PostgresSessionRepo, get_session_repo
 
@@ -79,9 +81,13 @@ async def login(
   user_email = user_info["email"]
 
   # Check if user already has a valid session (existing and non-expired)
+  # Note: Can't really query Redis here, but honestly that's not that important since
+  # logging in with an existing session is outside of the normal flow. However, we'll still
+  # delete any potential cached session in redis.
   existing_session = await postgres_session_repo.get_session_by_user_id(user_id)
   if existing_session:
     await postgres_session_repo.delete_session_by_user_id(user_id)
+    await cache_delete_session(existing_session["session_token"])
     app_logger.info(
       f"User {user_email} has a previous session (active/inactive). Destroying previous session."
     )
@@ -100,16 +106,15 @@ async def logout(
   postgres_session_repo: PostgresSessionRepo = Depends(get_session_repo),
 ):
   """Endpoint for handling user logout"""
-
-  """"""
   session_token = request.cookies.get(settings.SESSION_COOKIE_NAME)
   if not session_token:
     app_logger.info("No session cookie detected, no further action")
     return status.HTTP_204_NO_CONTENT
-
+  
   response.delete_cookie(settings.SESSION_COOKIE_NAME)
   await postgres_session_repo.delete_session_by_token(session_token)
-  app_logger.info("Cookie detected, user logged out, and session deleted in DB")
+  await cache_delete_session(session_token)
+  app_logger.info("Cookie detected, user logged out, and session deleted in storage")
 
   return status.HTTP_200_OK
 
@@ -125,6 +130,7 @@ async def verify(
   This may change over time depending on what data the app supports.
   However again we won't return sensitive info like passsword_hash and other stuff.
   """
+
   # At this point user has a valid session, let's return user information for the client side
   user = await postgres_user_repo.get_user_by_id(user_id)
   if not user:
@@ -132,5 +138,4 @@ async def verify(
       "User was authenticated (session found), but user themselves didn't exist in db"
     )
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-
   return create_user_info_list([user])[0]

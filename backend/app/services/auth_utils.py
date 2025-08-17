@@ -1,3 +1,4 @@
+import json
 from typing import Dict, List, Optional, Tuple
 from datetime import datetime, timezone
 import argon2
@@ -9,7 +10,7 @@ from argon2 import PasswordHasher
 import bcrypt
 from app.repositories.PostgresSessionRepo import get_session_repo
 from app.repositories.PostgresUserRepo import get_user_repo
-
+from .redis import cache_update_session, cache_get_session, cache_set_session
 
 def create_user_info_list(users: List[any]):
   """Creates a filtered user info object that contains info that we can send back to the client"""
@@ -92,11 +93,38 @@ async def create_session(user_id: str) -> str:
   Returns:
       str: Session token
   """
+
+  # Default value for session's created_at and last_active_at fields
+  current_time_dt = datetime.now(timezone.utc) 
+  current_time_str = current_time_dt.isoformat()
+
+  # Remember we don't store expires_at directly so this doesn't involve asyncpg.
+  # This will be used for the TTL calculation in Redis only.
+  expires_at_dt = current_time_dt + settings.SESSION_ABSOLUTE_LIFETIME
+
   try:
     # Generate a cryptographically secure session token (32 bytes)
     session_token = secrets.token_urlsafe(32)
     postgres_session_repo = get_session_repo()
-    await postgres_session_repo.create_session(user_id, session_token)
+    await postgres_session_repo.create_session(user_id, session_token, current_time_dt, current_time_dt)
+
+    '''
+    asyncpg handles the timestamp conversion from datetime to timestamp/string. To set the 
+    session object in redis, you could do another query to get the session object from postgres, but 
+    it seems more efficient to just reconstruct the session object here in-memory since we already 
+    have the values.
+
+    NOTE: If you're changing the schema of the session in Postgres, make sure 
+    you change it here as well.
+    '''
+    session_obj = {
+      "user_id": user_id,
+      "session_token": session_token,
+      "last_active_at": current_time_str,
+      "created_at": current_time_str
+    }
+
+    await cache_set_session(session_obj, expires_at_dt)
     return session_token
   except Exception as e:
     app_logger.error(f"Failed to create session for user {user_id}: {str(e)}")
@@ -214,18 +242,25 @@ async def authenticate_request(request: Request, response: Response) -> None:
       detail="Authentication failed: No session token provided",
     )
 
-  # Check to see if we have a valid session for that session token
-  session = await validate_session(session_token, response)
+  # NOTE: If session wasn't found, Redis will return empty dictionary {}. An empty dictionary will pass 'if session is None', which is bad.
+  # So do a falsy check instead.
+  session = await cache_get_session(session_token)
+  if not session:
+    app_logger.info(f"Cache miss on session_token '{session_token}'!")
+    session = await validate_session(session_token, response)
+  else:
+    app_logger.info(f"Cache hit on session_token '{session_token}'!")
 
-  # If no valid session found, return an authentication error
   if session is None:
     app_logger.warning("Authentication failed: Invalid or expired session!")
     raise HTTPException(
       status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired session"
     )
-
-  user_id = session["user_id"]
-  return user_id
+  
+  
+  # NOTE: From Redis, it'll be a dictionary, but from Postgres, it'll be an asyncpg Record object. However 
+  # both are able to be accessed like dictionaries.
+  request.state.session = session
 
 
 # # --------------------------------------------------
@@ -233,15 +268,21 @@ async def authenticate_request(request: Request, response: Response) -> None:
 # # --------------------------------------------------
 async def require_auth(request: Request, response: Response) -> int:
   """Dependency that ensures user is authenticated and returns user id"""
-  user_id = await authenticate_request(request, response)
+  await authenticate_request(request, response)
+  
+  user_id = int(request.state.session["user_id"])
+  session_token = request.state.session["session_token"]
 
   try:
-    # At this point we have an authenticated request (valid). Update the last_time_active to now!
-    current_time = current_time = datetime.now(timezone.utc)
+    # At this point we have an authenticated request (valid). Update the last_time_active to now
+    # in the postgres database and in Redis.
+    current_time: datetime = datetime.now(timezone.utc)
     postgres_session_repo = get_session_repo()
     await postgres_session_repo.update_session_last_active_by_user_id(
       current_time, user_id
     )
+
+    await cache_update_session(session_token, current_time)
   except Exception as e:
     # Don't really want to fail the request for this.
     app_logger.error(f"Failed to update last_active for user {user_id}: {str(e)}")

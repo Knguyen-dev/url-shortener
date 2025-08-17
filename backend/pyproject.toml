@@ -15,7 +15,7 @@ dependencies = [
     "requests>=2.32.3",                # Requests, e.g. OIDC requests or something else
     "python-dotenv>=1.0.1",       # Allows for loading environment variables.
     "cassandra-driver",                # Python Cassandra driver
-    "redis>=6.2.0",                    # Redis client, allows us to connect to redis instance
+    "redis>=6.2.0",                    # Redis client (redis-py), allows us to connect to redis instance
     "aiosmtplib>=2.0.2",          # Async SMTP Client
     "email-validator>=2.1.1",     # Validates email fields
 

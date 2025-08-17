@@ -34,7 +34,9 @@ class Settings(BaseSettings):
   CASSANDRA_KEYSPACE: str = get_env_with_logging("CASSANDRA_KEYSPACE", "urlshortener")
 
   # Redis Credentials;
-  REDIS_URL: str = get_env_with_logging("REDIS_URL", "redis://redis:6379/0")
+  REDIS_HOST: str = get_env_with_logging("REDIS_HOST", "redis")
+  REDIS_PORT: int = get_env_with_logging("REDIS_PORT", "6379")
+  REDIS_DB: int = get_env_with_logging("REDIS_DB", "0")
   CLICK_THRESHOLD: int = (
     5  # If greater than or equal to the threshold, we'll flush the clicks
   )
@@ -43,7 +45,7 @@ class Settings(BaseSettings):
   IS_PRODUCTION: bool = ENVIRONMENT == "PRODUCTION"
 
   # Session Authentication
-  SESSION_IDLE_LIFETIME: timedelta = timedelta(minutes=30)
+  SESSION_IDLE_LIFETIME: timedelta = timedelta(minutes=15)
   SESSION_ABSOLUTE_LIFETIME: timedelta = timedelta(hours=3)
   SESSION_COOKIE_NAME: str = "session_id"
 
