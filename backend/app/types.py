@@ -100,6 +100,7 @@ class UrlByUserId(BaseModel):
     datetime  # When returned to the client, FastAPI converts this to ISO format string.
   )
 
+
 class UrlPasswordRequest(BaseModel):
   password: str
 
