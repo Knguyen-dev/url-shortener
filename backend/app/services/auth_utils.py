@@ -10,16 +10,21 @@ import bcrypt
 from app.repositories.PostgresSessionRepo import get_session_repo
 from app.repositories.PostgresUserRepo import get_user_repo
 from .redis import cache_update_session, cache_get_session, cache_set_session
+from app.types import UserInfoResponse
 
 
-def create_user_info_list(users: List[any]):
+def create_user_info_list(users: List[UserInfoResponse]):
   """Creates a filtered user info object that contains info that we can send back to the client"""
   user_info_list = []
   for u in users:
     user_info = {
       "id": u["id"],
       "email": u["email"],
+      "full_name": u["full_name"],
       "is_admin": u["is_admin"],
+      # Typically you're using this after getting the data from Postgres Database and asyncpg, so
+      # the created_at field is a datetime object. If it's not, you can handle it accordingly.
+      "created_at": u["created_at"],
     }
     user_info_list.append(user_info)
   return user_info_list

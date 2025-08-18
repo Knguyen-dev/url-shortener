@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, status, Depends
 from fastapi.responses import RedirectResponse
 from app.services.logger import app_logger
-from app.types import CreateUrlRequest
+from app.types import CreateUrlRequest, UrlByUserId
 import re
 from datetime import datetime, timezone
 from urllib.parse import urlparse
@@ -29,7 +29,19 @@ async def redirect_url(
   cassandra_url_repo: CassandraUrlRepo = Depends(get_cassandra_url_repo),
   cassandra_click_repo: CassandraClickRepo = Depends(get_cassandra_click_repo),
 ):
-  """Handle redirecting the short urls we generate to the original urls"""
+  """Handle redirecting the short urls we generate to the original urls
+
+  Args:
+      backhalf_alias (str): The backhalf alias of the short url.
+
+  Raises:
+      HTTPException: 401 if the url is password protected.
+      HTTPException: Url not found, a 404 error.
+      HTTPException: 403 error if url is marked as inactive.
+
+  Returns:
+      RedirectResponse: A redirect response to the original url.
+  """
   existing_url = fetch_url_and_availability(backhalf_alias, cassandra_url_repo)
 
   if existing_url["password_hash"]:
@@ -51,8 +63,17 @@ async def url_verify_password(
   cassandra_url_repo: CassandraUrlRepo = Depends(get_cassandra_url_repo),
   cassandra_click_repo: CassandraClickRepo = Depends(get_cassandra_click_repo),
 ):
-  """Handles authentication and redirects for password-protected urls"""
+  """Handles authentication and redirects for password-protected urls
 
+  Raises:
+      HTTPException: 400 when the url isn't password protected.
+      HTTPException: 401 when the password entered doesn't match the url's password.
+      HTTPException: 404 when url isn't found.
+      HTTPException: 401 when url is marked as inactive.
+
+  Returns:
+      RedirectResponse: A redirect response to the original url.
+  """
   existing_url = fetch_url_and_availability(backhalf_alias, cassandra_url_repo)
   stored_hash = existing_url["password_hash"]
   if not stored_hash:
@@ -72,7 +93,7 @@ async def url_verify_password(
 
 
 @url_router.get("/api/urls/{backhalf_alias}")
-async def get_url(
+async def get_url_info(
   backhalf_alias: str,
   user_id: str = Depends(require_auth),
   cassandra_url_repo: CassandraUrlRepo = Depends(get_cassandra_url_repo),
@@ -82,8 +103,13 @@ async def get_url(
   cassandra_click_repo: CassandraClickRepo = Depends(get_cassandra_click_repo),
 ):
   """Gets all the info related to a url.
+
+  Raises:
+      HTTPException: 404 if the url isn't found.
+      HTTPException: 401 if the user isn't authorized to get the url info.
   Note: Endpoint is intended for development purposes and checking all the collective information
   for a url to ensure all the database interactions are working.
+
   """
   existing_url = cassandra_url_repo.get_url_by_alias(backhalf_alias)
   if not existing_url:
@@ -98,7 +124,11 @@ async def get_url(
     )
   url_by_user = cassandra_url_by_user_repo.get_single_url(user_id, backhalf_alias)
   total_clicks = cassandra_click_repo.get_total_clicks(backhalf_alias)
-  return {"url": existing_url, "url_by_user": url_by_user, "total_clicks": total_clicks}
+  return {
+    "url_by_backhalf_alias": existing_url,
+    "url_by_user_id": url_by_user,
+    "total_clicks": total_clicks,
+  }
 
 
 @url_router.delete("/api/urls/{backhalf_alias}")
@@ -111,7 +141,18 @@ async def delete_url(
   ),
   cassandra_click_repo: CassandraClickRepo = Depends(get_cassandra_click_repo),
 ):
-  """Handles deleting a url given it's backhalf alias"""
+  """Handles deleting a url given it's backhalf alias
+
+  Args:
+      backhalf_alias (str): Backhalf alias of the url being deleted
+
+  Raises:
+      HTTPException: 404 if the url isn't found.
+      HTTPException: 401 If the user isn't authorized to delete the url.
+
+  Returns:
+      A 200 staus code indicating the url was deleted successfully.
+  """
   try:
     existing_url = cassandra_url_repo.get_url_by_alias(backhalf_alias)
     if not existing_url:
@@ -135,7 +176,7 @@ async def delete_url(
 
     await cache_delete_url_click(backhalf_alias)
 
-    return {"message": f"Url with backhalf alias {backhalf_alias} was deleted!"}
+    return status.HTTP_200_OK
   except HTTPException as e:
     raise e
   except Exception as e:
@@ -156,7 +197,15 @@ async def update_url(
     get_cassandra_url_by_user_repo
   ),
 ):
-  """Endpoint for updating an existing url"""
+  """Handles updating a url given its backhalf alias
+  Raises:
+      HTTPException: 404 if the url isn't found.
+      HTTPException: 401 if the user isn't authorized to update the url.
+      HTTPException: 400 if the pasword is defined and is_remove_password is true.
+
+  Returns:
+      A status 200 OK indicating the url was updated successfully.
+  """
   try:
     existing_url = cassandra_url_by_user_repo.get_single_url(user_id, backhalf_alias)
     if not existing_url:
@@ -240,7 +289,7 @@ async def update_url(
 
     cassandra_url_by_user_repo.update_url(is_active, title, user_id, backhalf_alias)
 
-    return {"message": f"Updated URL '{backhalf_alias}'!"}
+    return status.HTTP_200_OK
   except HTTPException:
     raise
   except Exception as e:
@@ -261,8 +310,16 @@ async def create_url(
     get_cassandra_url_by_user_repo
   ),
   cassandra_click_repo: CassandraClickRepo = Depends(get_cassandra_click_repo),
-):
-  """Handles when an authenticated user wants to create a short url"""
+) -> UrlByUserId:
+  """Handles when a user wants to create a short url
+
+  Raises:
+      HTTPException: 400 if the url is syntacically invalid.
+      HTTPException: 500 for any internal server error.
+
+  Returns:
+      UrlByUserId: A data model containing the created url information.
+  """
 
   is_valid, message = is_valid_url(create_url_request.original_url)
   if not is_valid:
@@ -285,6 +342,8 @@ async def create_url(
       create_url_request.is_active,
     )
 
+    created_at = datetime.now(timezone.utc)
+
     cassandra_url_by_user_repo.create_url(
       user_id,
       backhalf_alias,
@@ -295,10 +354,12 @@ async def create_url(
     )
     cassandra_click_repo.update_url_clicks(backhalf_alias, 0)
     return {
-      "backhalf_alias": backhalf_alias,
       "user_id": user_id,
+      "backhalf_alias": backhalf_alias,
       "original_url": create_url_request.original_url,
       "is_active": create_url_request.is_active,
+      "title": create_url_request.title,
+      "created_at": created_at.isoformat(),  # ISO format datetime string
     }
   except Exception as e:
     app_logger.error(f"Error creating a url: {str(e)}")
@@ -306,8 +367,6 @@ async def create_url(
       detail="Internal Server Error. Please try again later",
       status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
     )
-
-  # Return the URL like it's from the main urls table; omit password hash though
 
 
 # # ---------------------------------------------------

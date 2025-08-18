@@ -7,6 +7,8 @@ from app.repositories.CassandraUrlByUserRepo import (
 from app.repositories.PostgresUserRepo import PostgresUserRepo, get_user_repo
 from app.repositories.PostgresSessionRepo import PostgresSessionRepo, get_session_repo
 from app.services.logger import app_logger
+from typing import List
+from app.types import UserInfoResponse
 
 user_router = APIRouter()
 
@@ -28,6 +30,8 @@ def get_urls_for_user(
       user_id (str): ID of the user whose urls we want to see.
       auth_user_id (str): ID of the user making the request
 
+  Returns:
+      List[UrlByUserId]: A list of urls for a given user.
   Note: In the normal case, both should be equal. The only exceptions would
   be when one user is trying to see another user's URLs. We prevent this entirely.
   Currently I don't see a reason for an admin to see someone else's urls, so
@@ -42,6 +46,8 @@ def get_urls_for_user(
       detail="Unauthorized to access these resources",
     )
   urls = cassandra_urls_by_user_repo.get_urls_by_user_id(user_id)
+
+  # Note: Cassandra returns the created_at field as a datetime object, so we need to convert it to ISO format
   return urls
 
 
@@ -49,10 +55,13 @@ def get_urls_for_user(
 async def get_users(
   user_id: int = Depends(require_admin),
   postgres_user_repo: PostgresUserRepo = Depends(get_user_repo),
-):
+) -> List[UserInfoResponse]:
   """Gets all users in the application
 
   Note: Ideally we show all users on an admin dashboard.
+
+  Returns:
+      List[UserInfoResponse]: List of all users in the application.
   """
   users = await postgres_user_repo.get_all_users()
   users = create_user_info_list(users)
@@ -64,16 +73,17 @@ async def delete_user(
   user_id: int,
   auth_user_id: int = Depends(require_auth),
   postgres_user_repo: PostgresUserRepo = Depends(get_user_repo),
-  postgres_session_repo: PostgresSessionRepo = Depends(get_session_repo),
 ):
-  """API endpoint for deleting a given user
+  """API endpoint for deleting a given user.
 
-  Args:
-      user_id (str): ID of the user being deleted.
-      auth_user_id (str): The ID of the user making the request.
+  Raises:
+      HTTPException: 400 if the user is trying to delete themselves, or if the user doesn't exist.
+      HTTPException: 403 if a regular user is trying to delete another user.
+      HTTPException: 403 if an admin is trying to delete themselves.
+      HTTPException: 404 if the user that was being deleted wasn't found. Also raised when the autheenticated user wasn't found, but that realistically shouldn't happen.
 
-  NOTE: Endpoint never actually verifies whether a user did exist and was deleted, but honestly
-  that's fine for now. Unless the implementation would be really easy.
+  Returns:
+      status.HTTP_200_OK: If the user was deleted successfully.
   """
 
   # Get the user who is making this request
@@ -86,7 +96,7 @@ async def delete_user(
       f"Session with user_id '{user_id}', but the user themselves did not exist in the db!"
     )
     raise HTTPException(
-      status_code=status.HTTP_400_BAD_REQUEST,
+      status_code=status.HTTP_404_NOT_FOUND,
       detail="User authenticating wasn't found!",
     )
 
@@ -119,9 +129,9 @@ async def delete_user(
 
   if is_admin_deletion:
     app_logger.info(f"Admin with ID '{auth_user_id}' deleted user with ID '{user_id}'.")
-    return {"message": f"User id='{user_id}', deleted by admin"}
-  app_logger.info(f"User with ID '{user_id}' deleted their own account!")
-  return {"message": f"User id='{user_id}' is deleted"}
+  else:
+    app_logger.info(f"User with ID '{user_id}' deleted their own account!")
+  return status.HTTP_200_OK
 
 
 @user_router.patch("/api/users/{user_id}/admin")
@@ -138,11 +148,18 @@ async def change_admin_status(
   """Endpoint for letting an admin toggle the admin status of another user.
 
   Args:
-      user_id (str): ID of the user whose admin status we're updating
+      user_id (int): ID of the user whose admin status we want to change.
       is_admin (bool): Boolean that we'll set the user's admin status to.
-      auth_user_id (str): ID of the user making the request to update the admin status. This user is an admin.
 
-  NOTE: I imagine this endpoint being used in an admin dashboard.
+  Raises:
+      HTTPException: 403 if the user is trying to change their own admin status.
+      HTTPException: 404 if the user whose admin status is changing doesn't exist.
+
+  Returns:
+      status.HTTP_200_OK: If the operation was successful.
+
+  NOTE: I imagine this endpoint being used in an admin dashboard where the admin can look up or
+  toggle the admin status of a given user.
   """
 
   """
@@ -171,4 +188,5 @@ async def change_admin_status(
   app_logger.info(
     f"User with ID '{user_id}' now has is_admin={is_admin}. Operation was done by admin with ID '{auth_user_id}'"
   )
-  return {"message": f"User with ID '{user_id}' now has is_admin={is_admin}"}
+
+  return status.HTTP_200_OK

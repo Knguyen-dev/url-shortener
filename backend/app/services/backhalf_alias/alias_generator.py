@@ -25,6 +25,9 @@ class AliasGenerator:
     but almost all frameworks provides this. We already use this in the app. Just define
     a get_alias_generator function and use Depends().
     """
+
+    # TODO: If you're scaling this up, make sure each UID generation
+    # service has a different UID
     self.worker_id = 0  # your worker_id/machine_id
 
     # Note: If you want shorter urls, use simple sequence generation
