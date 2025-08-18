@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from app.services.logger import app_logger
 from app.config import settings
-from app.types import SignupRequest, LoginRequest
+from app.types import SignupRequest, LoginRequest, UserInfoResponse
 from app.services.auth_utils import create_session, require_auth, set_session_cookie
 from app.services.auth_utils import (
   hash_password,
@@ -9,7 +9,6 @@ from app.services.auth_utils import (
   create_user_info_list,
 )
 from app.services.redis import cache_delete_session
-
 from app.repositories.PostgresUserRepo import PostgresUserRepo, get_user_repo
 from app.repositories.PostgresSessionRepo import PostgresSessionRepo, get_session_repo
 
@@ -25,7 +24,14 @@ async def signup(
   signup_request: SignupRequest,
   postgres_user_repo: PostgresUserRepo = Depends(get_user_repo),
 ):
-  """Endpoint for handling native user signup"""
+  """Endpoint for handling user signups
+
+  Raises:
+      HTTPException: Raises 400 if user with email already exists
+
+  Returns:
+      HTTP 201 Created on successful signup
+  """
 
   user = await postgres_user_repo.get_user_by_email(signup_request.email)
   if user:
@@ -53,14 +59,12 @@ async def login(
   response: Response,
   postgres_user_repo: PostgresUserRepo = Depends(get_user_repo),
   postgres_session_repo: PostgresSessionRepo = Depends(get_session_repo),
-):
-  """Endpoint for handling native user login
+) -> UserInfoResponse:
+  """Endpoint handling user logins
 
-  Note: This endpoint has two main responsibillities:
-    1. Setting a cookie in the response, used to authenticate following subsequent backend requests (proof of auth).
-    2. Sending back user info about the currently logged in user for display purposes and it can also act as client-side auth.
+  Raises:
+      HTTPException: Raises a 400 if email or password is incorrect
   """
-
   user = await postgres_user_repo.get_user_by_email(login_request.email)
   if not user:
     app_logger.warning(f"Login attempt with invalid email: {login_request.email}")
@@ -75,7 +79,7 @@ async def login(
       status_code=status.HTTP_400_BAD_REQUEST, detail="Email or password is incorrect!"
     )
 
-  user_info = create_user_info_list([user])[0]
+  user_info: UserInfoResponse = create_user_info_list([user])[0]
 
   user_id = user_info["id"]
   user_email = user_info["email"]
@@ -105,7 +109,7 @@ async def logout(
   response: Response,
   postgres_session_repo: PostgresSessionRepo = Depends(get_session_repo),
 ):
-  """Endpoint for handling user logout"""
+  """Endpoint for handling user logout. Removes session from storage, removes cookies, etc. It'll return a HTTP 204 if no session cookie was found, otherwise an HTTP 200 Ok."""
   session_token = request.cookies.get(settings.SESSION_COOKIE_NAME)
   if not session_token:
     app_logger.info("No session cookie detected, no further action")
@@ -123,12 +127,15 @@ async def logout(
 async def verify(
   user_id: int = Depends(require_auth),
   postgres_user_repo: PostgresUserRepo = Depends(get_user_repo),
-):
-  """Verifies whether a user is authenticated, if so we'll return the user's information back
+) -> UserInfoResponse:
+  """Verifies whether a user is authenticated, if so we'll return the user's information back.
 
   Note: This is most useful for the frontend as you'd display this info on a dashboard, use it for personalization.
   This may change over time depending on what data the app supports.
   However again we won't return sensitive info like passsword_hash and other stuff.
+
+  Raises:
+      HTTPException: A 404 in the where the user somehow had a session but the user themselves wasn't stored in the database.
   """
 
   # At this point user has a valid session, let's return user information for the client side

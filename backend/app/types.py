@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel, EmailStr, Field, model_validator
 
@@ -5,6 +6,21 @@ from pydantic import BaseModel, EmailStr, Field, model_validator
 # #----------------------------------
 # Auth router models
 # # ---------------------------------
+class UserInfoResponse(BaseModel):
+  """Data model representing the user information returned by the API.
+
+  The main reason this exists is to be able to return non-sensitive user information
+  back to client after login, after verifying credentials, etc. You'd avoid sending
+  sensitive information like password hashes, etc.
+  """
+
+  id: int
+  email: EmailStr
+  full_name: str
+  is_admin: bool
+  created_at: datetime  # Automatically converted to ISO format datetime string when sent to client (thanks to FastAPI)
+
+
 class SignupRequest(BaseModel):
   # TODO: Real app would have length constraints and probably your own email validation regex
   # to have explainability for frontend and backend.
@@ -54,6 +70,36 @@ class CreateUrlRequest(BaseModel):
     return self
 
 
+class UrlByBackhalfAlias(BaseModel):
+  """Data model representing a URL fetched by its backhalf alias.
+  This should match its corresponding DB model."""
+
+  backhalf_alias: str
+  user_id: int
+  original_url: str
+  password_hash: Optional[str] = None
+  is_active: bool
+
+
+class UrlByUserId(BaseModel):
+  """Data model representing a URL fetched by its user ID. This
+  data model is used mainly when we want to show urls on a user's dashboard.
+  This should match its corresponding DB model.
+
+  Note: This is also used for the response when the user creates a url.
+  The idea is that when a user creates a url, we'd also want to show that
+  URL on the user's dashboard.
+  """
+
+  user_id: int
+  backhalf_alias: str
+  original_url: str
+  is_active: bool
+  title: str
+  created_at: (
+    datetime  # When returned to the client, FastAPI converts this to ISO format string.
+  )
+
 class UrlPasswordRequest(BaseModel):
   password: str
 
@@ -72,3 +118,11 @@ class UpdateUrlRequest(BaseModel):
   confirm_password: Optional[str] = None
   is_remove_password: bool = False  # explicitly remove password protection on link
   is_active: Optional[bool] = None  # new active state, or none meaning no change
+
+
+class UrlInfoResponse(BaseModel):
+  """Data model representing the comprehensive information about a URL, including its details and click statistics."""
+
+  url_by_backhalf_alias: UrlByBackhalfAlias
+  url_by_user_id: UrlByUserId
+  total_clicks: int
