@@ -6,9 +6,11 @@ A robust and efficient URL shortener built for fast redirects and reliable link 
 1. Features
 2. Getting Started
 3. Usage
-4. Technical Stack 
-5. Contributing
-6. License
+4. API Reference
+5. Technical Stack 
+6. Design and Architecture
+7. Contribution Rules
+
 
 ## 1. Features 
 - **Url Shortening and Redirection:** URLs are mapped to a shorter version using Snowflake IDs and Base62 encoding for unique, compact links. Users can then use these short links to be redirected to the original URL.
@@ -89,23 +91,23 @@ All of the commands needed to run the application are available in `Makefile`. H
 - `make test:` Runs any tests in the backend.
 - `make frontend`: If you ever make a frontend in the future, you'll use something like this to run the frontend without spinning up the backend. This would allow for quick frontend development and iteration. 
 
-## API Reference
+## 4. API Reference
 
 You can find documentation for the API at `localhost:8000/docs` or just the `/docs` route of where the API runs. This uses FastAPI's builtin documentation feature that documents all of the endpoints and the data models/schemas that are used for requests bodies, parameters, and response models. I also recommend cross-referencing with the `types.py` file which will add more developer details and design decisions for particular data models.
 
-## Technical Stack 
+## 5. Technical Stack 
 - **Python, FastAPI:** Uses FastAPI framework to develop our python-based API. This just makes things modern, easier to maintain, and allows for fast development.
 - **Postgres:** Used for storing authentication-related data (e.g., users and sessions) due to its high data consistency and integrity, which is essential for sensitive information. We also use database connection pooling to optimize performance.
 - **Cassandra:** Utilized for storing URL data, including the number of clicks. Its high write performance and distributed P2P architecture are ideal for an application designed to scale horizontally, have high availability, and handle a large number of redirects efficiently.
 - **Redis:** An in-memory cache used to cache URL clicks, reducing write load on the Cassandra database. It is also used for session-based caching to minimize database queries for user sessions.
 
 
-## Design and Architecture 
+## 6. Design and Architecture 
 
 ### Database and Application Diagrams
 [Url Shortener's Diagrams](https://lucid.app/lucidchart/b0dfd4d3-202d-4f52-845f-750ae04a93e1/edit?viewport_loc=759%2C-232%2C3100%2C1208%2C0_0&invitationId=inv_911a3eee-8815-40b8-8e87-ecf174111ab1)
 
-You can find the diagrams for the postgres schema, cassandra keyspace, and application architecture on that link.
+You can find the diagrams for the postgres schema, cassandra keyspace, and application architecture on that link. In general though, it should be pretty straight forward to re-create the database diagrams, and the architecture of the application itself isn't that complex.
 
 ### Postgres Schema Design 
 **`users` table**
@@ -160,7 +162,9 @@ In distributed systems, keeping an accurate count is a little more complex and r
 - **Docker-based Development:** Uses Docker and `Makefile` to create a consistent, repeatable development environment.for all dependencies.
 - **Microservices-ready:** The system is designed to be easily transitioned into a distributed system. This is evident as it leverages Cassandra (distributed database), and the alias generation has been prepared to scale up to multiple machines. As well as this, the session caching with Redis allows for a centralized session store for multiple machines.
 
-## Contributions
+## 7. Contributions
+Any and all contributions are welcome! If you'd like to contribute, please create a feature branch and ideally target an issue that's already listed in the repository.
 
 ## Credits
+- [URL Shortener - System Design School](https://systemdesignschool.io/problems/url-shortener/solution)
 - [Redis.py Docs](https://redis.readthedocs.io/en/stable/commands.html)
