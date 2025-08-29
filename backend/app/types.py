@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
-import re
+
 
 # #----------------------------------
 # Auth router models
@@ -27,30 +27,29 @@ class SignupRequest(BaseModel):
   password: str
   confirm_password: str
 
-  
-  @field_validator('email', mode='before')
+  @field_validator("email", mode="before")
   def normalize_email(cls, v):
-      return v.lower().strip()
+    return v.lower().strip()
 
-  @field_validator('full_name', mode='before')
+  @field_validator("full_name", mode="before")
   def normalize_full_name(cls, v):
-      return v.strip()
+    return v.strip()
 
   @field_validator("password", mode="after")
   @classmethod
   def validate_password_strength(cls, password: str) -> str:
-    '''
-      + Password regex, same as the one on the front-end:
-      1. ^: start of the string
-      2. (?=.*[a-z]): Checks for at least one lower case letter
-      3. (?=.*[A-Z]): Checks for at least one upper case letter
-      4. (?=.*\d): Checks for at least one digit
-      5. (?=.*[!@#$%^&*]): Checks for at least one of those 'special' characters listed between the brackets
-      6. (?!.*\s): No white spaces for entire string, which makes sense since it's a password.
-      7. .{8, 40}: String is at least 8 characters and at most 40.
-      8. $: End of the string
-    '''
-    password_regex = r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*])(?!.*\s).{8,40}$";
+    """
+    + Password regex, same as the one on the front-end:
+    1. ^: start of the string
+    2. (?=.*[a-z]): Checks for at least one lower case letter
+    3. (?=.*[A-Z]): Checks for at least one upper case letter
+    4. (?=.*\d): Checks for at least one digit
+    5. (?=.*[!@#$%^&*]): Checks for at least one of those 'special' characters listed between the brackets
+    6. (?!.*\s): No white spaces for entire string, which makes sense since it's a password.
+    7. .{8, 40}: String is at least 8 characters and at most 40.
+    8. $: End of the string
+    """
+    password_regex = r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*])(?!.*\s).{8,40}$"
     if not password_regex.match(password):
       raise ValueError(
         "Password must be 8-40 characters long, contain at least one uppercase letter, one lowercase letter, one number, and one special character (!@#$%^&*), and have no spaces."
@@ -58,7 +57,7 @@ class SignupRequest(BaseModel):
     return password
 
   # NOTE: Use model validator to compare multiple fields whilst regular
-  # field_validator can't cross-reference. Basically "after" means that this runs after pydantic checks the types 
+  # field_validator can't cross-reference. Basically "after" means that this runs after pydantic checks the types
   # and other constraints we defined like Field(min_length=1), etc.
   # https://docs.pydantic.dev/latest/concepts/validators/#using-the-decorator-pattern
   @model_validator(mode="after")
@@ -72,7 +71,7 @@ class LoginRequest(BaseModel):
   # NOTE: Good practice to have constraints to the login's input fields:
   # - Prevents maliciously long inputs that could cause DoS attacks.
   # - Also for data integrity as we ensure the data being processed by the login route
-  # is within reasonable limits. 
+  # is within reasonable limits.
 
   # The email should have constraints to prevent excessively long inputs.
   # The max length of 254 is the standard (RFC 5322) for email addresses.
@@ -99,13 +98,13 @@ class CreateUrlRequest(BaseModel):
   @classmethod
   def normalize_title(cls, title: str) -> str:
     return title.strip()
-  
+
   @field_validator("password", mode="after")
   @classmethod
   def validate_password_strength(cls, password: Optional[str]) -> Optional[str]:
     if password is None:
       return password
-    
+
     # If password is defined, make sure it's between 5-20 characters long and alphanumeric only.
     # Note: We don't require special characters, uppercase, lowercase, etc. for url passwords
     if not password.isalnum():
@@ -114,9 +113,10 @@ class CreateUrlRequest(BaseModel):
     min_length = 5
     max_length = 20
     if not (min_length <= len(password) <= max_length):
-      raise ValueError(f"Password must be between {min_length} and {max_length} characters long.")
+      raise ValueError(
+        f"Password must be between {min_length} and {max_length} characters long."
+      )
     return password
-        
 
   @model_validator(mode="after")
   def check_passwords_match(self):
@@ -158,10 +158,11 @@ class UrlByUserId(BaseModel):
 
 class UrlPasswordRequest(BaseModel):
   """Request body model for when a user is trying to access a passwor-protected url.
-  
-  NOTE: Make sure the length constraints match those defined in CreateUrlRequest to 
+
+  NOTE: Make sure the length constraints match those defined in CreateUrlRequest to
   ensure some consistency and reasonable limits.
   """
+
   password: str = Field(min_length=5, max_length=20)
 
 
@@ -184,7 +185,7 @@ class UpdateUrlRequest(BaseModel):
   @classmethod
   def normalize_title(cls, title: str) -> str:
     return title.strip()
-  
+
   @field_validator("title", mode="ater")
   @classmethod
   def validate_title(cls, title: str) -> str:
@@ -201,7 +202,7 @@ class UpdateUrlRequest(BaseModel):
   def validate_password_strength(cls, password: Optional[str]) -> Optional[str]:
     if password is None:
       return password
-    
+
     # NOTE: Make sure these constraints match those defined in CreateUrlRequest
     if not password.isalnum():
       raise ValueError("Password must contain alphanumeric characters only.")
@@ -209,21 +210,22 @@ class UpdateUrlRequest(BaseModel):
     min_length = 5
     max_length = 20
     if not (min_length <= len(password) <= max_length):
-      raise ValueError(f"Password must be between {min_length} and {max_length} characters long.")
+      raise ValueError(
+        f"Password must be between {min_length} and {max_length} characters long."
+      )
     return password
-  
 
   @model_validator(mode="after")
   def check_passwords_match(self):
-    '''
+    """
     NOTE: For this to work, either both word and confirm_password are defined (for change)
     or neither are defined (for no change). If only one is defined, then raise an error.
     The conditional below checks for this.
-    '''
+    """
     if self.password != self.confirm_password:
       raise ValueError("Passwords do not match for the password-protected url!")
     return self
-  
+
 
 class UrlInfoResponse(BaseModel):
   """Data model representing the comprehensive information about a URL, including its details and click statistics."""
