@@ -186,7 +186,7 @@ class UpdateUrlRequest(BaseModel):
   def normalize_title(cls, title: str) -> str:
     return title.strip()
 
-  @field_validator("title", mode="ater")
+  @field_validator("title", mode="after")
   @classmethod
   def validate_title(cls, title: str) -> str:
     if title is None:
